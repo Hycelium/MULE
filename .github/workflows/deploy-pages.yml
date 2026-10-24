@@ -1,4 +1,4 @@
-name: Deploy Roadkeep to GitHub Pages
+name: Deploy MULE to GitHub Pages
 
 on:
   push:
