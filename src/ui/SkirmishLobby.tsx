@@ -86,6 +86,7 @@ interface SkirmishLobbyProps {
   onHost: () => void;
   onJoin: () => void;
   onCopy: () => void;
+  onShare: () => void;
   onStart: () => void;
   onLeave: () => void;
 }
@@ -114,9 +115,11 @@ export function SkirmishLobby({
   onHost,
   onJoin,
   onCopy,
+  onShare,
   onStart,
   onLeave,
 }: SkirmishLobbyProps) {
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   return (
     <div className="overlay title-overlay skirmish-lobby">
       <h1>Skirmish</h1>
@@ -171,7 +174,18 @@ export function SkirmishLobby({
 
       {role === "host" && invite && (
         <>
+          {!guestConnected && (
+            <p className="lobby-stay">
+              Share opens Messages without leaving the lobby. Send the link, then come back — they should open it once
+              you are back on MULE.
+            </p>
+          )}
           <input className="lobby-field" readOnly value={invite} onFocus={(ev) => ev.currentTarget.select()} />
+          {canShare && (
+            <button type="button" className="cta" onClick={onShare}>
+              Share via Messages
+            </button>
+          )}
           <button type="button" className="ghost" onClick={onCopy}>
             {copied ? "Copied" : "Copy invite link"}
           </button>
