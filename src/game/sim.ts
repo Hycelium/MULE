@@ -598,7 +598,7 @@ export class GameSim {
     this.localTeam = "you";
     const map = generateMap(mission.seed);
     map.name = mission.nation;
-    map.tagline = mission.blurb;
+    map.tagline = mission.title;
     this.activeMap = map;
     this.nextId = 1;
     this.aiTimer = 0;
@@ -616,11 +616,7 @@ export class GameSim {
     this.state.buildTimer = FIRST_BUILD;
     notifyAiMatchStart();
     const unit = unitPlural(mission.unit);
-    this.addToast(
-      mission.mode === "onslaught"
-        ? `${mission.nation} — an onslaught of ${unit}, with extra ground to build on.`
-        : `${mission.nation} fields ${unit} and nothing else.`,
-    );
+    this.addToast(`${mission.title} — ${mission.nation} fields ${unit}.`);
     return true;
   }
 

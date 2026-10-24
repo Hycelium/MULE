@@ -266,12 +266,15 @@ export function CampaignMap({ onClose, onMarch, triumph, onTriumphDone }: Campai
         <footer className="campaign-dossier">
           <div>
             <span className="orders-kicker">Field orders · {heldCount} of 10 held</span>
-            <strong>{selected.nation}</strong>
+            <strong>{selected.title}</strong>
             <span className="orders-meta">
-              {selected.mode === "onslaught" ? "Onslaught" : "March"} {selected.id} of 10 · {plural} only
-              {heldCount > 0 ? ` · ${heldCount} held` : ""}
+              {selected.nation} · {selected.mode === "onslaught" ? "Onslaught" : "March"} {selected.id} of 10 ·{" "}
+              {plural} only
             </span>
             <p className="campaign-blurb">{selected.blurb}</p>
+            <p className="campaign-hint">
+              <em>Hint:</em> {selected.hint}
+            </p>
             <p className="campaign-stake">
               {status === "held" && selected.mode === "march" && `${plural} are already yours.`}
               {status === "held" && selected.mode === "onslaught" && "This flood has been turned."}

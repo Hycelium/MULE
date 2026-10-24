@@ -6,7 +6,12 @@ export type MissionMode = "march" | "onslaught";
 export interface CampaignMission {
   id: number;
   nation: string;
+  /** Short field-orders heading shown before the march. */
+  title: string;
+  /** Field-orders body for the selected mission. */
   blurb: string;
+  /** Coaching line under the orders. */
+  hint: string;
   unit: TrainKind;
   mode: MissionMode;
   waves: number;
@@ -16,6 +21,11 @@ export interface CampaignMission {
   y: number;
 }
 
+const ONSLAUGHT_ORDERS =
+  "Time is the enemy — use your combined forces to survive the onslaught.";
+const ONSLAUGHT_HINT =
+  "Levies counter Runners. Runners counter Archers. Archers counter Levies. Ballistas counter Runners and Wards. Catapults counter Rams. Think strategy — you'll need to fight with peons to win this campaign.";
+
 /**
  * Five nations, each fought twice. The march unlocks their only unit.
  * The later onslaught is the same host on a wider field, in growing waves.
@@ -24,7 +34,10 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 1,
     nation: "Lowmere",
-    blurb: "A levy host and nothing else. Hold with towers and peons until their line is yours.",
+    title: "Building an Economy",
+    blurb:
+      "Survive the onslaught of levies. There will be at least 8 waves — learn to build up your defenses.",
+    hint: "Upgrade your defensive buildings; you haven't unlocked any military units from the barracks yet.",
     unit: "levy",
     mode: "march",
     waves: 8,
@@ -35,7 +48,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 2,
     nation: "Swiftfen",
-    blurb: "They send only runners. Break the charge and the charge is yours.",
+    title: "Building your Army",
+    blurb: "The enemy is sending in the cavalry. Quickly build your defense and counter their raids.",
+    hint: "Protect your economy, and try hopping into one of your levies to fight on foot.",
     unit: "runner",
     mode: "march",
     waves: 8,
@@ -46,7 +61,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 3,
     nation: "Ashbow",
-    blurb: "Bows, and no other steel. Silence the pale and their archers join you.",
+    title: "Countering the Enemy",
+    blurb: "The enemy has archers — will you send infantry or cavalry?",
+    hint: "Go cavalry and experience first person on horseback.",
     unit: "archer",
     mode: "march",
     waves: 8,
@@ -57,7 +74,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 4,
     nation: "Shieldmere",
-    blurb: "A wall of wards. Crack it and the shields change hands.",
+    title: "Dealing with Heavy Units",
+    blurb: "The enemy is sending an onslaught of wards. Prepare yourself.",
+    hint: "Learn to rely on ballista towers, and speed.",
     unit: "ward",
     mode: "march",
     waves: 8,
@@ -68,7 +87,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 5,
     nation: "Ramholt",
-    blurb: "Rams and more rams. Stop the gate-breakers and they ram for you.",
+    title: "Countering Siege",
+    blurb: "Defend yourself from an early rush and victory is assured.",
+    hint: "Have fun, and try out the catapults!",
     unit: "rammer",
     mode: "march",
     waves: 8,
@@ -79,7 +100,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 6,
     nation: "Lowmere Flood",
-    blurb: "Lowmere returns in greater number, across a field crowded with building ground.",
+    title: "Combined Arms",
+    blurb: ONSLAUGHT_ORDERS,
+    hint: ONSLAUGHT_HINT,
     unit: "levy",
     mode: "onslaught",
     waves: 12,
@@ -90,7 +113,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 7,
     nation: "Swiftfen Reach",
-    blurb: "Runners in a rising flood. More pads, and every wave is larger than the last.",
+    title: "Combined Arms",
+    blurb: ONSLAUGHT_ORDERS,
+    hint: ONSLAUGHT_HINT,
     unit: "runner",
     mode: "onslaught",
     waves: 12,
@@ -101,7 +126,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 8,
     nation: "Ashbow High",
-    blurb: "The bows come in waves that thicken. The high ground is wide enough to answer them.",
+    title: "Combined Arms",
+    blurb: ONSLAUGHT_ORDERS,
+    hint: ONSLAUGHT_HINT,
     unit: "archer",
     mode: "onslaught",
     waves: 12,
@@ -112,7 +139,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 9,
     nation: "Shieldmere Gate",
-    blurb: "Wards press in a lengthening siege. Plant towers on the extra ground and outlast them.",
+    title: "Combined Arms",
+    blurb: ONSLAUGHT_ORDERS,
+    hint: ONSLAUGHT_HINT,
     unit: "ward",
     mode: "onslaught",
     waves: 12,
@@ -123,7 +152,9 @@ export const MISSIONS: CampaignMission[] = [
   {
     id: 10,
     nation: "Ramholt Crown",
-    blurb: "The last host. Rams in a rising onslaught, on the widest field of the marches.",
+    title: "Combined Arms",
+    blurb: ONSLAUGHT_ORDERS,
+    hint: ONSLAUGHT_HINT,
     unit: "rammer",
     mode: "onslaught",
     waves: 12,

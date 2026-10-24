@@ -3123,8 +3123,23 @@ button,
 .campaign-dossier .campaign-blurb {
   display: -webkit-box;
   overflow: hidden;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+}
+
+.campaign-dossier .campaign-hint {
+  color: #5a4018 !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+}
+
+.campaign-dossier .campaign-hint em {
+  font-style: normal;
+  font-weight: 700;
+  color: #7a4a12;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
 }
 
 .campaign-stake {
@@ -3142,9 +3157,19 @@ button,
 }
 
 @media (max-height: 720px) {
-  .campaign-dossier .campaign-blurb,
   .campaign-dossier .orders-meta {
     display: none;
+  }
+
+  .campaign-dossier .campaign-blurb {
+    -webkit-line-clamp: 2;
+  }
+
+  .campaign-dossier .campaign-hint {
+    -webkit-line-clamp: 2;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
   }
 
   .campaign-dossier strong {
