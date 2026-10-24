@@ -1,6 +1,6 @@
 import Peer, { type DataConnection, type PeerError } from "peerjs";
 import { createRoomId, asNetMsg, splitWire, WireReassembly, type NetMsg } from "./protocol";
-import { ATTEMPT_MS, iceConfiguration, nextLinkStep } from "./ice";
+import { ATTEMPT_MS, fetchIceServers, iceConfiguration, nextLinkStep } from "./ice";
 
 const PATH_FAIL = "Could not open a path between the two networks. Try again.";
 
@@ -36,19 +36,21 @@ export class SkirmishLink {
   private parts = new WireReassembly();
   private rejected = false;
   private ignored = new Set<DataConnection>();
+  private iceServers: RTCIceServer[] = [];
+  private spawnGen = 0;
 
   constructor(private events: SkirmishEvents) {}
 
   host(roomId: string) {
     this.role = "host";
     this.roomId = roomId;
-    this.begin();
+    void this.begin();
   }
 
   join(roomId: string) {
     this.role = "guest";
     this.roomId = roomId;
-    this.begin();
+    void this.begin();
   }
 
   send(msg: NetMsg) {
@@ -90,7 +92,7 @@ export class SkirmishLink {
     this.peer = null;
   }
 
-  private begin() {
+  private async begin() {
     this.opened = false;
     this.closed = false;
     this.stopped = false;
@@ -100,9 +102,9 @@ export class SkirmishLink {
     this.unavailableTries = 0;
     this.lostGen = -1;
     this.attemptStarted = Date.now();
-    this.events.onStatus("Connecting");
+    this.events.onStatus("Opening path…");
     this.armDeadline();
-    this.spawn();
+    await this.spawn();
   }
 
   private elapsed() {
@@ -113,10 +115,19 @@ export class SkirmishLink {
     return this.relayUsed ? 1 : 0;
   }
 
-  private spawn() {
+  private async ensureIce() {
+    this.iceServers = await fetchIceServers();
+  }
+
+  private async spawn() {
+    const gen = ++this.spawnGen;
     const relayOnly = this.relayUsed;
+    this.events.onStatus(relayOnly ? "Using relay…" : "Opening path…");
+    await this.ensureIce();
+    if (this.closed || this.stopped || gen !== this.spawnGen) return;
+    this.events.onStatus(relayOnly ? "Using relay…" : "Connecting");
     const id = this.role === "host" ? this.roomId : undefined;
-    const peer = this.makePeer(id, iceConfiguration(relayOnly));
+    const peer = this.makePeer(id, iceConfiguration(this.iceServers, relayOnly));
     peer.on("open", (readyId) => {
       if (this.closed || this.stopped || this.peer !== peer) return;
       this.idRetries = 0;
@@ -273,17 +284,9 @@ export class SkirmishLink {
     this.unavailableTries = 0;
     this.lostGen = -1;
     this.attemptStarted = Date.now();
-    this.events.onStatus("Connecting through relay");
-    const peer = this.peer;
-    if (!peer || peer.destroyed) {
-      this.armDeadline();
-      this.spawn();
-      return;
-    }
-    peer.options.config = iceConfiguration(true);
-    this.dropQuiet();
+    this.events.onStatus("Using relay…");
     this.armDeadline();
-    if (peer.open && this.role === "guest") this.connectGuest();
+    void this.spawn();
   }
 
   private failPath() {
@@ -342,7 +345,7 @@ export class SkirmishLink {
         this.attemptStarted = Date.now();
         this.events.onStatus("Connecting");
         this.armDeadline();
-        this.spawn();
+        void this.spawn();
         return;
       }
       if (this.idRetries < 5) {
@@ -350,7 +353,7 @@ export class SkirmishLink {
         const wait = 400 * this.idRetries;
         window.clearTimeout(this.reopenTimer);
         this.reopenTimer = window.setTimeout(() => {
-          if (!this.closed && !this.stopped && !this.opened) this.spawn();
+          if (!this.closed && !this.stopped && !this.opened) void this.spawn();
         }, wait);
         return;
       }

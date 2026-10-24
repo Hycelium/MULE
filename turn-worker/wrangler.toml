@@ -1,0 +1,7 @@
+name = "mule-turn"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Secrets (set with wrangler secret put):
+#   TURN_KEY_ID
+#   TURN_KEY_API_TOKEN

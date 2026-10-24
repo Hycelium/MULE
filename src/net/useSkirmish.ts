@@ -188,7 +188,8 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
             ...s,
             roomId: id,
             invite: inviteLink(id),
-            status: s.status === "Connecting through relay" ? s.status : "Connecting",
+            status:
+              s.status === "Using relay…" || s.status === "Opening path…" ? s.status : "Connecting",
           }));
         },
         onConnected: () => {
