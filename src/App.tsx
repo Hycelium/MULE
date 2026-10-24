@@ -866,6 +866,12 @@ export default function App() {
     if (ui.selectedKeepTeam === ui.localTeam && prev.selectedKeepTeam !== ui.localTeam) {
       showHint("keep-panel", "Queue peons here. Build Houses on eco pads to raise the cap.");
     }
+    if (ui.possessed && !prev.possessed && layoutRef.current.fpsTouch) {
+      showHint(
+        "phone-fps",
+        "Left stick walks, drag right to look, Fire to strike. Kills pull you to third person; pinch or +/− to adjust.",
+      );
+    }
   }, [ui, showHint]);
 
   const onSelectBuild = (kind: BuildingKind) => {

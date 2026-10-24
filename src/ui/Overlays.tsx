@@ -109,10 +109,6 @@ export function Overlays({
             Keep Level {ui.keepLevel} · XP {ui.keepXp}/{ui.keepXpNext}
           </p>
           <p>Every keep level forges a new battlefield. The Ten Marches unlock the units you can muster.</p>
-          <p className="phone-controls-tip">
-            On a phone: left stick walks, drag the right side to look, Fire to strike. Kills pull you to third person;
-            pinch or +/− to adjust.
-          </p>
 
           {arcadeOpen ? (
             <>
