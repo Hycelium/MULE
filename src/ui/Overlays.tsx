@@ -110,8 +110,8 @@ export function Overlays({
           </p>
           <p>Every keep level forges a new battlefield. The Ten Marches unlock the units you can muster.</p>
           <p className="phone-controls-tip">
-            On a phone: left stick walks, drag the right side to look, Fire to strike. After kills, pinch or tap + to look
-            out.
+            On a phone: left stick walks, drag the right side to look, Fire to strike. Kills pull you to third person;
+            pinch or +/− to adjust.
           </p>
 
           {arcadeOpen ? (
