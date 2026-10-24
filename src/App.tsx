@@ -14,6 +14,7 @@ import { ControlCluster, type ClusterAction } from "./ui/ControlCluster";
 import { RadialMenu, type RadialItem } from "./ui/RadialMenu";
 import { useHints } from "./ui/hints";
 import { useLayout } from "./ui/useLayout";
+import { TouchFpsPad } from "./ui/TouchFpsPad";
 import { skirmishMaps } from "./game/map";
 import { useSkirmish } from "./net/useSkirmish";
 import { SkirmishEnd, SkirmishLobby } from "./ui/SkirmishLobby";
@@ -162,6 +163,15 @@ export default function App() {
   const layout = useLayout();
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  const lockWantedRef = useRef(false);
+  const grabPointerLock = useCallback(() => {
+    if (layoutRef.current.fpsTouch) {
+      lockWantedRef.current = false;
+      return;
+    }
+    lockWantedRef.current = true;
+    canvasRef.current?.requestPointerLock();
+  }, []);
   const [clusterOpen, setClusterOpen] = useState(false);
   const [touchDrag, setTouchDrag] = useState<TouchDragMode>(() => {
     try {
@@ -183,6 +193,20 @@ export default function App() {
   const phaseRef = useRef(ui.phase);
 
   const refreshUi = useCallback(() => setUi(sim.getUiSnapshot()), [sim]);
+
+  /** Hop into a barracks troop for PUBG-style first person (phones + desktop). */
+  const hopIntoBody = useCallback(
+    (id: number) => {
+      if (!sim.tryPossess(id)) return false;
+      const body = sim.getState().units.find((u) => u.id === id);
+      rendererRef.current?.enterPossess(sim.getPossessYaw(), body?.kind === "trebuchet");
+      grabPointerLock();
+      refreshUi();
+      beep(360, 0.08);
+      return true;
+    },
+    [sim, grabPointerLock, refreshUi],
+  );
 
   const requestFullscreen = useCallback(async () => {
     if (!fullscreenWantedRef.current || fullscreenElement() || fullscreenRequestRef.current) return;
@@ -432,6 +456,10 @@ export default function App() {
         ev.preventDefault();
         return;
       }
+      if (sim.getState().possessedId != null && layoutRef.current.fpsTouch) {
+        ev.preventDefault();
+        return;
+      }
       if (ev.button === 2) ev.preventDefault();
       const touch = isTouchLike(ev);
       // Any new finger cancels a pending long-press and the marquee.
@@ -556,16 +584,8 @@ export default function App() {
         }
       }
 
-      if (!touch && ev.button === 0 && hit?.kind === "unit") {
-        if (sim.tryPossess(Number(hit.id))) {
-          const body = sim.getState().units.find((u) => u.id === Number(hit.id));
-          r.enterPossess(sim.getPossessYaw(), body?.kind === "trebuchet");
-          canvas.requestPointerLock();
-          refreshUi();
-          beep(360, 0.08);
-          return;
-        }
-      }
+      // Tap a friendly barracks troop → first person (phones included; Basilisk-style hop).
+      if (hit?.kind === "unit" && (touch || ev.button === 0) && hopIntoBody(Number(hit.id))) return;
 
       sim.click(hit, world);
       if (hit?.kind === "villager") pushTapMarker(p.x, p.y, "select", "");
@@ -1000,6 +1020,18 @@ export default function App() {
         },
       });
     }
+    if (
+      hit?.kind === "unit" &&
+      state.units.some((u) => u.id === Number(hit.id) && u.team === sim.getLocalTeam() && u.fromBarracks)
+    ) {
+      radialItems.unshift({
+        id: "possess",
+        icon: "👁",
+        label: "Hop in",
+        tone: "move",
+        onPress: () => hopIntoBody(Number(hit.id)),
+      });
+    }
     radialItems.push({
       id: "barricade",
       icon: "🪵",
@@ -1033,6 +1065,8 @@ export default function App() {
     `layout-${layout.layout}`,
     layout.phone ? "is-phone" : "is-large",
     layout.touch ? "is-touch" : "is-pointer",
+    layout.fpsTouch ? "is-fps-touch" : "",
+    layout.android ? "is-android" : "",
     isFullscreen ? "is-fullscreen" : "",
   ]
     .filter(Boolean)
@@ -1077,26 +1111,56 @@ export default function App() {
           <canvas ref={canvasRef} className={ui.possessed ? "battlefield possessed" : "battlefield"} />
           {ui.phase === "running" && <KeepTugBar ui={ui} />}
           {ui.possessed && (
-            <div className={`fps-hud${ui.possessed.kind === "trebuchet" ? " treb-hud" : ""}`} aria-hidden>
-              <span className="fps-crosshair" />
+            <div className={`fps-hud${ui.possessed.kind === "trebuchet" ? " treb-hud" : ""}`}>
+              <span className="fps-crosshair" aria-hidden />
               {ui.possessed.kind === "trebuchet" ? (
                 <>
-                  <p className="fps-banner">
-                    {ui.possessed.label} · {ui.possessed.hp}/{Math.ceil(ui.possessed.maxHp)}
-                    {ui.possessed.aimLabel ? ` · ${ui.possessed.aimLabel}` : " · look at a tower, then click to wind"}
-                  </p>
+                  {!layout.phone && (
+                    <p className="fps-banner">
+                      {ui.possessed.label} · {ui.possessed.hp}/{Math.ceil(ui.possessed.maxHp)}
+                      {ui.possessed.aimLabel ? ` · ${ui.possessed.aimLabel}` : " · look at a tower, then click to wind"}
+                    </p>
+                  )}
                   <div className="fps-charge">
                     <i style={{ width: `${Math.round(Math.min(1, ui.possessed.charge) * 100)}%` }} />
                     <span>{ui.possessed.charge >= 1 ? "Loose!" : "Click to wind"}</span>
                   </div>
                 </>
               ) : (
-                <p className="fps-banner">
-                  {ui.possessed.label} · {ui.possessed.hp}/{Math.ceil(ui.possessed.maxHp)} · vision{" "}
-                  {Math.min(ui.possessed.visionMax, Math.floor(ui.possessed.visionScore))}/{ui.possessed.visionMax}
-                  {ui.possessed.visionScore <= 0 ? " · kill to scroll out" : " · wheel looks out"}
-                </p>
+                !layout.phone && (
+                  <p className="fps-banner">
+                    {ui.possessed.label} · {ui.possessed.hp}/{Math.ceil(ui.possessed.maxHp)} · vision{" "}
+                    {Math.min(ui.possessed.visionMax, Math.floor(ui.possessed.visionScore))}/{ui.possessed.visionMax}
+                    {layout.fpsTouch
+                      ? " · left stick · drag right to look"
+                      : ui.possessed.visionScore <= 0
+                        ? " · kill to scroll out"
+                        : " · wheel looks out"}
+                  </p>
+                )
               )}
+              {layout.fpsTouch ? (
+                <TouchFpsPad
+                  fireLabel={ui.possessed.kind === "trebuchet" ? (ui.possessed.charge >= 1 ? "Loose" : "Wind") : "Fire"}
+                  onMove={(keys) => sim.setPossessMove(keys)}
+                  onLook={(dx, dy) => {
+                    const r = rendererRef.current;
+                    if (!r) return;
+                    r.lookBy(dx, dy, 1.7);
+                    sim.setPossessYaw(r.getFpsYaw());
+                  }}
+                  onFire={() => {
+                    sim.possessAttack();
+                    rendererRef.current?.kickSwing();
+                  }}
+                  onLeave={() => {
+                    lockWantedRef.current = false;
+                    sim.releasePossess("esc");
+                    document.exitPointerLock();
+                    refreshUi();
+                  }}
+                />
+              ) : null}
             </div>
           )}
           {selectionBox && (

@@ -733,6 +733,11 @@ export class GameSim {
     this.sendDrive();
   }
 
+  setPossessMove(keys: { w: boolean; a: boolean; s: boolean; d: boolean }) {
+    this.possessKeys = { ...keys };
+    this.sendDrive();
+  }
+
   private canPossess(u: Unit, team: Team) {
     return u.hp > 0 && u.team === team && u.fromBarracks;
   }
