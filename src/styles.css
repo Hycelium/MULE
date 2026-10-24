@@ -540,6 +540,131 @@ button:disabled {
   max-width: 55%;
 }
 
+.keep-tug {
+  position: absolute;
+  top: auto;
+  bottom: 12px;
+  left: 18px;
+  right: 18px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.keep-tug-side {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 22px;
+}
+
+.keep-tug-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(10, 8, 12, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  display: flex;
+  overflow: hidden;
+}
+
+.keep-tug-side.you .keep-tug-track {
+  justify-content: flex-end;
+}
+
+.keep-tug-side.foe .keep-tug-track {
+  justify-content: flex-start;
+}
+
+.keep-tug-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.18s linear;
+}
+
+.keep-tug-side.you i {
+  background: linear-gradient(90deg, #f0c14b, #ffe29a);
+  box-shadow: 0 0 10px rgba(240, 193, 75, 0.45);
+}
+
+.keep-tug-side.foe i {
+  background: linear-gradient(90deg, #ff6a58, #c42222);
+  box-shadow: 0 0 10px rgba(255, 70, 50, 0.4);
+}
+
+.keep-tug-side em,
+.keep-tug-side small {
+  position: absolute;
+  top: -13px;
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f4efe4;
+  text-shadow: 0 1px 3px #000;
+  white-space: nowrap;
+}
+
+.keep-tug-side.you em {
+  left: 2px;
+}
+
+.keep-tug-side.you small {
+  right: 4px;
+  letter-spacing: 0.08em;
+  color: #e2bc72;
+}
+
+.keep-tug-side.foe em {
+  right: 2px;
+}
+
+.keep-tug-badge {
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #f3eee4;
+  color: #1b1510;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow:
+    0 0 0 3px rgba(18, 12, 10, 0.85),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.is-phone .keep-tug {
+  top: auto;
+  bottom: calc(8px + var(--sab));
+  left: 10px;
+  right: 10px;
+  gap: 6px;
+}
+
+.is-phone .keep-tug-badge {
+  flex-basis: 38px;
+  width: 38px;
+  height: 38px;
+  font-size: 13px;
+}
+
+.stage:has(.keep-tug) .unit-command-bar,
+.stage:has(.keep-tug) .cam-hint {
+  bottom: 68px;
+}
+
+.stage:has(.keep-tug) .control-cluster {
+  bottom: 68px;
+}
+
 /* ------------------------------------------------------------------ control cluster (FAB) */
 
 .control-cluster {

@@ -316,6 +316,8 @@ export interface GameState {
   possessCharge: number;
   possessAimBuildingId: number | null;
   possessAimBarricadeId: number | null;
+  /** Enemy trebuchet in the sights while possessing an engine. */
+  possessAimUnitId: number | null;
 }
 
 export interface QueueSlotUi {
@@ -348,6 +350,7 @@ export interface UiSnapshot {
   yourHp: number;
   foeHp: number;
   yourMaxHp: number;
+  foeMaxHp: number;
   yourGold: number;
   yourWood: number;
   foeGold: number;
@@ -406,6 +409,8 @@ export interface UiSnapshot {
   /** Side this screen commands. Guest is `foe` while the map stays north-up. */
   localTeam: Team;
   pvp: boolean;
+  /** Persistent player win count for the keep tug badge. */
+  playerWins: number;
   /** Set while a Ten Marches mission is the live match. */
   missionId: number | null;
   missionName: string;

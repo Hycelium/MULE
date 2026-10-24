@@ -36,7 +36,11 @@ export type RemoteOrder =
   | { t: "cancel"; team: Team; buildingId: number; index: number }
   | { t: "pause" }
   | { t: "speed" }
-  | { t: "rush" };
+  | { t: "rush" }
+  | { t: "drive"; team: Team; id: number; w: boolean; a: boolean; s: boolean; d: boolean; yaw: number }
+  | { t: "strike"; team: Team }
+  | { t: "possess"; team: Team; id: number }
+  | { t: "unpossess"; team: Team };
 
 export interface SnapKeep {
   hp: number;
@@ -164,6 +168,8 @@ export interface MatchSnapshot {
   nodes: SnapNode[];
   barricades: SnapBarricade[];
   pads: SnapPad[];
+  /** Body each side is driving in first person (host you / guest foe). */
+  driven?: Record<Team, number | null>;
 }
 
 export type NetMsg =
@@ -186,6 +192,7 @@ const ORDER_TYPES = new Set<RemoteOrder["t"]>([
   "attack",
   "gather",
   "recall",
+  "work",
   "build",
   "train",
   "peon",
@@ -199,6 +206,10 @@ const ORDER_TYPES = new Set<RemoteOrder["t"]>([
   "pause",
   "speed",
   "rush",
+  "drive",
+  "strike",
+  "possess",
+  "unpossess",
 ]);
 
 export function createRoomId() {

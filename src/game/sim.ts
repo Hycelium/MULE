@@ -193,6 +193,11 @@ export class GameSim {
   private predicted = new Set<number>();
   private possessKeys = { w: false, a: false, s: false, d: false };
   private possessYaw = 0;
+  /** Guest body the host is driving from remote keys. */
+  private remoteBody: number | null = null;
+  private remoteKeys = { w: false, a: false, s: false, d: false };
+  private remoteYaw = Math.PI;
+  private remoteStrike = false;
 
   constructor() {
     const meta = loadMeta();
@@ -274,6 +279,7 @@ export class GameSim {
       possessCharge: 0,
       possessAimBuildingId: null,
       possessAimBarricadeId: null,
+      possessAimUnitId: null,
       mapId: map.id,
       time: 0,
       paused: false,
@@ -405,6 +411,11 @@ export class GameSim {
     if (this.state.phase === "running" && !this.state.paused) {
       this.state.time += elapsed * this.state.speed;
       this.stepOwnPrediction(elapsed * this.state.speed);
+      const body = this.state.units.find((u) => u.id === this.state.possessedId && u.hp > 0);
+      if (body) {
+        this.poses.delete("u" + body.id);
+        this.stepPossessed(body, elapsed * this.state.speed);
+      }
     }
     this.stepPoses(elapsed);
   }
@@ -714,27 +725,62 @@ export class GameSim {
 
   setPossessYaw(yaw: number) {
     this.possessYaw = yaw;
+    this.sendDrive();
   }
 
   setPossessKey(key: "w" | "a" | "s" | "d", down: boolean) {
     this.possessKeys[key] = down;
+    this.sendDrive();
+  }
+
+  private canPossess(u: Unit, team: Team) {
+    return u.hp > 0 && u.team === team && u.fromBarracks;
+  }
+
+  private sendDrive() {
+    if (this.matchMode !== "pvp" || this.state.possessedId == null) return;
+    if (!this.orderSink || this.applyingRemote) return;
+    const { w, a, s, d } = this.possessKeys;
+    this.orderSink({
+      t: "drive",
+      team: this.localTeam,
+      id: this.state.possessedId,
+      w,
+      a,
+      s,
+      d,
+      yaw: this.possessYaw,
+    });
   }
 
   /**
-   * Take a living barracks-trained soldier in vs-AI. PvP, peons, creeps, and
-   * the enemy stay on the map.
+   * Take a living barracks-trained soldier. Skirmish guests redirect possess/drive
+   * to the host so both players can hop into their own troops.
    */
   tryPossess(id: number) {
-    if (this.matchMode === "pvp") return false;
     const s = this.state;
     if (s.phase !== "running") return false;
     const u = s.units.find((x) => x.id === id);
-    if (!u || u.hp <= 0 || u.team !== this.localTeam || !u.fromBarracks) return false;
+    if (!u || !this.canPossess(u, this.localTeam)) return false;
+    if (this.redirect({ t: "possess", team: this.localTeam, id: u.id })) {
+      s.possessedId = u.id;
+      s.speed = 1;
+      s.possessCharge = 0;
+      s.possessAimBuildingId = null;
+      s.possessAimBarricadeId = null;
+      s.possessAimUnitId = null;
+      this.possessKeys = { w: false, a: false, s: false, d: false };
+      this.possessYaw = u.team === "you" ? 0 : Math.PI;
+      this.sendDrive();
+      this.addToast(`Taking the field — ${UNIT_DEFS[u.kind].label}. Esc returns.`);
+      return true;
+    }
     s.possessedId = u.id;
     s.speed = 1;
     s.possessCharge = 0;
     s.possessAimBuildingId = null;
     s.possessAimBarricadeId = null;
+    s.possessAimUnitId = null;
     u.rallyPoint = undefined;
     u.engageFrom = undefined;
     u.targetUnitId = undefined;
@@ -748,10 +794,12 @@ export class GameSim {
   releasePossess(reason: "esc" | "death" | "end" = "esc") {
     const s = this.state;
     if (s.possessedId == null) return;
+    if (reason === "esc") this.redirect({ t: "unpossess", team: this.localTeam });
     s.possessedId = null;
     s.possessCharge = 0;
     s.possessAimBuildingId = null;
     s.possessAimBarricadeId = null;
+    s.possessAimUnitId = null;
     this.possessKeys = { w: false, a: false, s: false, d: false };
     if (reason === "death") this.addToast("Fallen. Click another soldier to take the field.");
   }
@@ -769,6 +817,7 @@ export class GameSim {
   possessAttack() {
     const s = this.state;
     if (s.phase !== "running" || s.paused) return false;
+    if (this.redirect({ t: "strike", team: this.localTeam })) return true;
     const u = s.units.find((x) => x.id === s.possessedId);
     if (!u || u.hp <= 0) return false;
     if (u.kind === "trebuchet") return this.possessTrebuchetFire(u);
@@ -905,16 +954,28 @@ export class GameSim {
     const s = this.state;
     s.possessAimBuildingId = null;
     s.possessAimBarricadeId = null;
+    s.possessAimUnitId = null;
     if (u.siegePhase !== "ready") return;
+    let bestEngine: Unit | undefined;
     let bestB: Building | undefined;
     let bestBar: Barricade | undefined;
     let best = -1;
+    for (const e of s.units) {
+      if (e.team === u.team || e.hp <= 0 || e.kind !== "trebuchet") continue;
+      const a = this.possessTrebAimScore(u, e.pos);
+      if (!a.ok || a.score < best) continue;
+      best = a.score;
+      bestEngine = e;
+      bestB = undefined;
+      bestBar = undefined;
+    }
     for (const b of s.buildings) {
       if (b.team === u.team || b.hp <= 0 || !isTrebuchetBuilding(b.kind)) continue;
       const a = this.possessTrebAimScore(u, b.pos);
       if (!a.ok || a.score < best) continue;
       best = a.score;
       bestB = b;
+      bestEngine = undefined;
       bestBar = undefined;
     }
     for (const b of s.barricades) {
@@ -923,13 +984,19 @@ export class GameSim {
       if (!a.ok || a.score < best) continue;
       best = a.score;
       bestBar = b;
+      bestEngine = undefined;
       bestB = undefined;
     }
-    if (bestB) s.possessAimBuildingId = bestB.id;
+    if (bestEngine) s.possessAimUnitId = bestEngine.id;
+    else if (bestB) s.possessAimBuildingId = bestB.id;
     else if (bestBar) s.possessAimBarricadeId = bestBar.id;
   }
 
   private possessAimLabel(s: GameState) {
+    if (s.possessAimUnitId != null) {
+      const engine = s.units.find((x) => x.id === s.possessAimUnitId);
+      if (engine) return "Trebuchet";
+    }
     if (s.possessAimBuildingId != null) {
       const b = s.buildings.find((x) => x.id === s.possessAimBuildingId);
       if (b) return buildingName(b.kind);
@@ -943,6 +1010,10 @@ export class GameSim {
 
   private possessTrebShot(u: Unit): { fire: () => void } | null {
     const s = this.state;
+    if (s.possessAimUnitId != null) {
+      const target = s.units.find((e) => e.id === s.possessAimUnitId && e.kind === "trebuchet");
+      if (target && target.hp > 0) return { fire: () => this.trebuchetHitUnit(u, target) };
+    }
     if (s.possessAimBuildingId != null) {
       const target = s.buildings.find((b) => b.id === s.possessAimBuildingId);
       if (target && target.hp > 0) return { fire: () => this.trebuchetHitBuilding(u, target) };
@@ -2046,7 +2117,26 @@ export class GameSim {
     }
   }
 
+  private trebuchetHitUnit(u: Unit, target: Unit) {
+    const dmg = trebuchetShot(target.maxHp);
+    target.hp -= dmg;
+    this.emitCombat("trebuchet", u.pos, target.pos, u.team);
+    this.addFloat(`-${dmg}`, target.pos.x, target.pos.y - 8, "#e8d39a");
+    if (u.id === this.state.possessedId) this.notePossessVision(target.hp <= 0 ? 1 : 0.25);
+  }
+
   private pickTrebuchetAim(u: Unit): { pos: Vec2; inRange: boolean; fire: () => void } | null {
+    // Enemy engines first — trebuchets duel each other before chewing towers.
+    let bestEngine: Unit | undefined;
+    let bestEd = Infinity;
+    for (const e of this.state.units) {
+      if (e.team === u.team || e.hp <= 0 || e.kind !== "trebuchet") continue;
+      const d = dist(u.pos, e.pos);
+      if (d < bestEd) {
+        bestEd = d;
+        bestEngine = e;
+      }
+    }
     let bestB: Building | undefined;
     let bestBd = Infinity;
     for (const b of this.state.buildings) {
@@ -2067,6 +2157,10 @@ export class GameSim {
         bestBar = b;
       }
     }
+    if (bestEngine && bestEd <= TREBUCHET_RANGE) {
+      const target = bestEngine;
+      return { pos: target.pos, inRange: true, fire: () => this.trebuchetHitUnit(u, target) };
+    }
     if (bestB && bestBd <= TREBUCHET_RANGE) {
       const target = bestB;
       return { pos: target.pos, inRange: true, fire: () => this.trebuchetHitBuilding(u, target) };
@@ -2075,6 +2169,7 @@ export class GameSim {
       const wall = bestBar;
       return { pos: wall.pos, inRange: true, fire: () => this.trebuchetHitBarricade(u, wall) };
     }
+    if (bestEngine) return { pos: bestEngine.pos, inRange: false, fire: () => {} };
     if (bestB) return { pos: bestB.pos, inRange: false, fire: () => {} };
     if (bestBar) return { pos: bestBar.pos, inRange: false, fire: () => {} };
     return null;
@@ -2772,9 +2867,13 @@ export class GameSim {
     );
   }
 
-  private stepPossessed(u: Unit, dt: number) {
-    const { w, a, s, d } = this.possessKeys;
-    const yaw = this.possessYaw;
+  private stepPossessed(
+    u: Unit,
+    dt: number,
+    keys = this.possessKeys,
+    yaw = this.possessYaw,
+  ) {
+    const { w, a, s, d } = keys;
     const fx = Math.sin(yaw);
     const fy = -Math.cos(yaw);
     const rx = Math.cos(yaw);
@@ -2847,6 +2946,20 @@ export class GameSim {
       u.attackTimer -= dt;
       if (u.id === this.state.possessedId) {
         this.stepPossessed(u, dt);
+        continue;
+      }
+      if (this.matchMode === "pvp" && u.id === this.remoteBody) {
+        this.stepPossessed(u, dt, this.remoteKeys, this.remoteYaw);
+        if (this.remoteStrike) {
+          const savedYaw = this.possessYaw;
+          const savedId = this.state.possessedId;
+          this.possessYaw = this.remoteYaw;
+          this.state.possessedId = u.id;
+          this.possessAttack();
+          this.state.possessedId = savedId;
+          this.possessYaw = savedYaw;
+          this.remoteStrike = false;
+        }
         continue;
       }
       if (u.kind === "trebuchet") {
@@ -3008,6 +3121,11 @@ export class GameSim {
         continue;
       }
       if (u.id === possessedId) this.releasePossess("death");
+      if (u.id === this.remoteBody) {
+        this.remoteBody = null;
+        this.remoteKeys = { w: false, a: false, s: false, d: false };
+        this.remoteStrike = false;
+      }
       const killer = this.enemy(u.team);
       this.state.gold[killer] += u.bounty;
       this.state.stats[killer].goldEarned += u.bounty;
@@ -3968,6 +4086,38 @@ export class GameSim {
         case "speed":
           this.toggleSpeed();
           break;
+        case "drive": {
+          const body = this.state.units.find((u) => u.id === order.id);
+          if (!body || !this.canPossess(body, team)) break;
+          this.remoteBody = body.id;
+          this.remoteKeys = { w: order.w, a: order.a, s: order.s, d: order.d };
+          this.remoteYaw = order.yaw;
+          body.rallyPoint = undefined;
+          body.engageFrom = undefined;
+          body.targetUnitId = undefined;
+          body.aiHeldForRush = undefined;
+          break;
+        }
+        case "strike":
+          this.remoteStrike = true;
+          break;
+        case "possess": {
+          const body = this.state.units.find((u) => u.id === order.id);
+          if (!body || !this.canPossess(body, team)) break;
+          this.remoteBody = body.id;
+          this.remoteKeys = { w: false, a: false, s: false, d: false };
+          this.remoteYaw = body.team === "you" ? 0 : Math.PI;
+          body.rallyPoint = undefined;
+          body.engageFrom = undefined;
+          body.targetUnitId = undefined;
+          body.aiHeldForRush = undefined;
+          break;
+        }
+        case "unpossess":
+          this.remoteBody = null;
+          this.remoteKeys = { w: false, a: false, s: false, d: false };
+          this.remoteStrike = false;
+          break;
       }
     } finally {
       this.applyingRemote = false;
@@ -4085,6 +4235,10 @@ export class GameSim {
         laneCoverage: p.laneCoverage,
         zone: p.zone,
       })),
+      driven: {
+        you: this.localTeam === "you" ? s.possessedId : this.remoteBody,
+        foe: this.localTeam === "foe" ? s.possessedId : this.remoteBody,
+      },
     };
   }
 
@@ -4185,6 +4339,14 @@ export class GameSim {
       for (const u of s.units) shownUnits.set(u.id, { x: u.pos.x, y: u.pos.y });
     }
     const easingOwn = new Set(this.predicted);
+    const pendingWork = new Map<number, string>();
+    for (const v of s.villagers) {
+      if (v.team !== this.localTeam || !this.predicted.has(v.id) || !v.targetNodeId) continue;
+      if (v.state === "toNode" || v.state === "gathering" || v.state === "toKeep") {
+        pendingWork.set(v.id, v.targetNodeId);
+      }
+    }
+    const prevPossessed = s.possessedId;
     this.notePoseGap();
     const selectedVillagerIds = s.selectedVillagerIds;
     const selectedBuildingId = s.selectedBuildingId;
@@ -4297,8 +4459,26 @@ export class GameSim {
       attackTimer: v.attackTimer,
       });
     }
+    // Keep guest "to work" peons on their node until the host picture catches up.
+    for (const [id, nodeId] of pendingWork) {
+      const peon = s.villagers.find((v) => v.id === id && v.team === this.localTeam && v.hp > 0);
+      if (!peon) continue;
+      if (peon.state === "idle" || peon.state === "home" || peon.state === "defend") {
+        peon.targetNodeId = nodeId;
+        peon.state = peon.carryingGold > 0 || peon.carryingWood > 0 ? "toKeep" : "toNode";
+        this.predicted.add(id);
+      } else if (peon.targetNodeId) {
+        this.predicted.add(id);
+      }
+    }
     this.prunePoses();
     this.predicted.clear();
+    for (const id of pendingWork.keys()) {
+      const peon = s.villagers.find((v) => v.id === id && v.targetNodeId);
+      if (peon && (peon.state === "toNode" || peon.state === "gathering" || peon.state === "toKeep")) {
+        this.predicted.add(id);
+      }
+    }
     s.buildings = snap.buildings.map((b) => ({
       id: b.id,
       team: b.team,
@@ -4351,11 +4531,16 @@ export class GameSim {
     s.soundOn = soundOn;
     s.audioUnlocked = audioUnlocked;
     s.hoveredPadId = hoveredPadId;
-    s.possessedId = null;
-    s.possessVisionScore = 0;
-    s.possessCharge = 0;
-    s.possessAimBuildingId = null;
-    s.possessAimBarricadeId = null;
+    const drivenId = snap.driven?.[this.localTeam] ?? prevPossessed;
+    const drivenBody = drivenId != null ? s.units.find((u) => u.id === drivenId && u.team === this.localTeam && u.hp > 0) : undefined;
+    s.possessedId = drivenBody?.id ?? null;
+    if (!drivenBody) {
+      s.possessVisionScore = 0;
+      s.possessCharge = 0;
+      s.possessAimBuildingId = null;
+      s.possessAimBarricadeId = null;
+      s.possessAimUnitId = null;
+    }
     s.buildSelection = buildSelection;
     s.selectedKeepTeam = selectedKeepTeam;
     const living = new Set(s.villagers.filter((v) => v.team === this.localTeam && v.hp > 0).map((v) => v.id));
@@ -4446,6 +4631,7 @@ export class GameSim {
       yourHp: Math.max(0, Math.ceil(s.keeps[view].hp)),
       foeHp: Math.max(0, Math.ceil(s.keeps[other].hp)),
       yourMaxHp: s.keeps[view].maxHp,
+      foeMaxHp: s.keeps[other].maxHp,
       yourGold: Math.floor(s.gold[view]),
       yourWood: Math.floor(s.wood[view]),
       foeGold: Math.floor(s.gold[other]),
@@ -4481,7 +4667,7 @@ export class GameSim {
       peonCount: s.villagers.filter((v) => v.team === view).length,
       peonCap: this.peonCap(view),
       idlePeonCount: s.villagers.filter(
-        (v) => v.team === view && v.hp > 0 && (v.state === "idle" || v.state === "home"),
+        (v) => v.team === view && this.peonReadyForWork(v) && !this.predicted.has(v.id),
       ).length,
       keepGarrisoned: s.villagers.filter((v) => v.team === view && v.state === "garrisoned").length,
       keepGarrisonMax: KEEP_GARRISON_MAX,
@@ -4508,6 +4694,7 @@ export class GameSim {
       foeLastAction: brain.lastAction,
       localTeam: view,
       pvp: this.matchMode === "pvp",
+      playerWins: meta.wins,
       missionId: this.campaignMission?.id ?? null,
       missionName: this.campaignMission?.nation ?? "",
       freshUnlock: this.lastUnlock,

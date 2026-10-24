@@ -7,6 +7,7 @@ import { BUILD_COST } from "./game/balance";
 import { Hud } from "./ui/Hud";
 import { BuildBar } from "./ui/BuildBar";
 import { DetailSheet } from "./ui/DetailSheet";
+import { KeepTugBar } from "./ui/KeepTugBar";
 import { Overlays } from "./ui/Overlays";
 import { CampaignMap } from "./ui/CampaignMap";
 import { ControlCluster, type ClusterAction } from "./ui/ControlCluster";
@@ -32,6 +33,7 @@ const defaultUi: UiSnapshot = {
   yourHp: 100,
   foeHp: 100,
   yourMaxHp: 100,
+  foeMaxHp: 100,
   yourGold: 90,
   yourWood: 80,
   foeGold: 90,
@@ -81,6 +83,7 @@ const defaultUi: UiSnapshot = {
   foeLastAction: "wait",
   localTeam: "you",
   pvp: false,
+  playerWins: 0,
   missionId: null,
   missionName: "",
   freshUnlock: "",
@@ -548,7 +551,7 @@ export default function App() {
         }
       }
 
-      if (!touch && ev.button === 0 && hit?.kind === "unit" && sim.getMatchMode() !== "pvp") {
+      if (!touch && ev.button === 0 && hit?.kind === "unit") {
         if (sim.tryPossess(Number(hit.id))) {
           const body = sim.getState().units.find((u) => u.id === Number(hit.id));
           r.enterPossess(sim.getPossessYaw(), body?.kind === "trebuchet");
@@ -1067,6 +1070,7 @@ export default function App() {
 
         <div className={sheetOpen ? "stage sheet-open" : "stage"} ref={stageRef}>
           <canvas ref={canvasRef} className={ui.possessed ? "battlefield possessed" : "battlefield"} />
+          {ui.phase === "running" && <KeepTugBar ui={ui} />}
           {ui.possessed && (
             <div className={`fps-hud${ui.possessed.kind === "trebuchet" ? " treb-hud" : ""}`} aria-hidden>
               <span className="fps-crosshair" />
