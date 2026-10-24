@@ -1410,16 +1410,18 @@ export default function App() {
           )}
         </div>
 
-        <BuildBar
-          ui={ui}
-          compact={compactBuild}
-          getCost={(k) => BUILD_COST[k]!}
-          onSelect={onSelectBuild}
-          onCancel={() => {
-            sim.cancelSelection();
-            refreshUi();
-          }}
-        />
+        {ui.phase === "running" && (
+          <BuildBar
+            ui={ui}
+            compact={compactBuild}
+            getCost={(k) => BUILD_COST[k]!}
+            onSelect={onSelectBuild}
+            onCancel={() => {
+              sim.cancelSelection();
+              refreshUi();
+            }}
+          />
+        )}
       </div>
     </div>
   );

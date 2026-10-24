@@ -1705,6 +1705,15 @@ button:disabled {
   justify-content: flex-start !important;
   padding-top: 18px !important;
   overscroll-behavior: contain;
+  z-index: 40;
+}
+
+.layout-column .title-overlay {
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  max-height: none;
 }
 
 .layout-side .title-overlay,
@@ -1713,6 +1722,10 @@ button:disabled {
   margin: 0 auto;
   left: 12px;
   right: 12px;
+}
+
+.layout-side .title-overlay {
+  max-height: calc(100% - 24px);
 }
 
 .layout-side.is-phone .title-overlay {
