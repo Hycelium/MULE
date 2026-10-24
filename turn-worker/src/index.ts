@@ -1,111 +1,94 @@
 /**
- * Mints short-lived Cloudflare Realtime TURN iceServers for MULE skirmish.
- * TURN_KEY_ID + TURN_KEY_API_TOKEN stay in Worker secrets — never in the game client.
+ * Mints a short-lived Cloudflare TURN credential for one match.
+ * Same layout as KA9KREW/roadkeep turn worker.
+ * TURN_KEY_ID and TURN_KEY_API_TOKEN stay here. The browser only receives
+ * the expiring username and password.
  */
+const TTL_SECONDS = 24 * 60 * 60;
 
 export interface Env {
   TURN_KEY_ID: string;
   TURN_KEY_API_TOKEN: string;
 }
 
-const ALLOWED_ORIGINS = new Set([
-  "https://hycelium.github.io",
-  "http://127.0.0.1:5173",
-  "http://localhost:5173",
-  "http://127.0.0.1:4173",
-  "http://localhost:4173",
-]);
-
-/** Match length + buffer; Cloudflare max TTL is 48h. */
-const TTL_SEC = 2 * 60 * 60;
-
-function corsHeaders(origin: string | null): HeadersInit {
-  const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://hycelium.github.io";
-  return {
-    "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
-  };
+function allowedOrigin(origin: string | null) {
+  if (!origin) return "";
+  if (origin === "https://hycelium.github.io") return origin;
+  if (origin === "https://ka9krew.github.io") return origin;
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return origin;
+  return "";
 }
 
-function json(data: unknown, status: number, origin: string | null) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders(origin),
-    },
-  });
+function withCors(response: Response, origin: string) {
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", origin);
+  headers.set("access-control-allow-methods", "POST, OPTIONS");
+  headers.set("access-control-allow-headers", "content-type");
+  headers.set("cache-control", "no-store");
+  return new Response(response.body, { status: response.status, headers });
 }
 
-/** Port 53 TURN URLs time out in browsers; drop them before handing to PeerJS. */
-function scrubIceServers(servers: RTCIceServer[]): RTCIceServer[] {
-  return servers.map((server) => {
-    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
-    const filtered = urls.filter((u) => typeof u === "string" && !/:53([?/]|$)/.test(u));
-    return { ...server, urls: filtered.length === 1 ? filtered[0]! : filtered };
-  });
+function rank(url: string) {
+  if (url.startsWith("turns:") && url.includes(":443")) return 0;
+  if (url.startsWith("turn:") && url.includes(":443")) return 1;
+  if (url.startsWith("turns:")) return 2;
+  if (url.includes(":80")) return 3;
+  return 4;
 }
 
-type RTCIceServer = {
+type IceServer = {
   urls: string | string[];
   username?: string;
   credential?: string;
 };
 
-async function mintIce(env: Env): Promise<{ iceServers: RTCIceServer[] }> {
-  const id = env.TURN_KEY_ID?.trim();
-  const token = env.TURN_KEY_API_TOKEN?.trim();
-  if (!id || !token) {
-    throw new Error("TURN secrets are not configured on this Worker.");
-  }
-  const res = await fetch(
-    `https://rtc.live.cloudflare.com/v1/turn/keys/${id}/credentials/generate-ice-servers`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ttl: TTL_SEC }),
-    },
-  );
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Cloudflare TURN mint failed (${res.status}): ${body.slice(0, 200)}`);
-  }
-  const data = (await res.json()) as { iceServers?: RTCIceServer[] };
-  if (!data.iceServers?.length) {
-    throw new Error("Cloudflare TURN mint returned no iceServers.");
-  }
-  return { iceServers: scrubIceServers(data.iceServers) };
+function shape(iceServers: unknown): IceServer[] {
+  if (!Array.isArray(iceServers)) return [];
+  return iceServers
+    .map((server: IceServer) => {
+      const raw = Array.isArray(server?.urls) ? server.urls : [server?.urls];
+      const urls = raw
+        .filter((url): url is string => typeof url === "string" && !/:53(?:\?|$)/.test(url))
+        .sort((a, b) => rank(a) - rank(b));
+      if (!urls.length) return null;
+      const next: IceServer = { urls };
+      if (typeof server.username === "string") next.username = server.username;
+      if (typeof server.credential === "string") next.credential = server.credential;
+      return next;
+    })
+    .filter((s): s is IceServer => !!s);
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const origin = request.headers.get("Origin");
-    const url = new URL(request.url);
-
+    const origin = allowedOrigin(request.headers.get("origin"));
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      if (!origin) return new Response(null, { status: 403 });
+      return withCors(new Response(null, { status: 204 }), origin);
     }
-
-    if (request.method === "GET" && url.pathname === "/") {
-      return json({ ok: true, service: "mule-turn" }, 200, origin);
+    if (!origin) return new Response("origin", { status: 403 });
+    if (request.method !== "POST") return withCors(new Response("method", { status: 405 }), origin);
+    if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
+      return withCors(new Response("turn is not configured", { status: 503 }), origin);
     }
-
-    if (request.method === "POST" && (url.pathname === "/ice" || url.pathname === "/")) {
-      try {
-        const minted = await mintIce(env);
-        return json(minted, 200, origin);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "TURN mint failed";
-        return json({ error: message }, 502, origin);
-      }
+    let upstream: Response;
+    try {
+      upstream = await fetch(
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ ttl: TTL_SECONDS }),
+        },
+      );
+    } catch {
+      return withCors(new Response("turn unavailable", { status: 502 }), origin);
     }
-
-    return json({ error: "Not found" }, 404, origin);
+    if (!upstream.ok) return withCors(new Response("turn unavailable", { status: 502 }), origin);
+    const data = (await upstream.json()) as { iceServers?: unknown };
+    return withCors(Response.json({ iceServers: shape(data.iceServers) }), origin);
   },
 };

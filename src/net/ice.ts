@@ -1,23 +1,22 @@
 /**
- * ICE for MULE skirmish.
+ * ICE for skirmish — same layout as KA9KREW/roadkeep.
  *
- * A PC on home Wi‑Fi can often connect peer-to-peer. Two phones on cell data
- * usually cannot: carrier NAT blocks the direct path, so the match must relay
- * through TURN. Short-lived Cloudflare credentials come from mule-turn
- * (VITE_TURN_URL). Nothing long-lived ships in the page. A free public TURN
- * is only a fallback when that mint is down — better than STUN-only.
+ * A PC can usually connect straight through a home router. Two phones on cell
+ * data cannot: each carrier NAT refuses the direct path, so the match has to
+ * pass through TURN. Credentials come from our worker, which asks Cloudflare
+ * for a short-lived username and password. Nothing long-lived is shipped in
+ * the page. The free relay below is only a fallback when that mint is down.
  */
+const FALLBACK_USER = "guest";
+const FALLBACK_CREDENTIAL = "password";
 
 export const ATTEMPT_MS = 12_000;
 /** Phones skip the long direct wait. Carrier NAT will not open it. */
 export const PHONE_ATTEMPT_MS = 2_500;
 export const RELAY_STATUS = "Trying relay…";
 
-const DEFAULT_TURN_URL = "https://mule-turn.hycelium.workers.dev/ice";
-
-const FALLBACK_USER = "guest";
-const FALLBACK_CREDENTIAL = "password";
-const PORT_53 = /:53(?:\?|$)/;
+const DEFAULT_MINT = "https://mule-turn.hycelium.workers.dev/";
+const MINT_URL = ((import.meta.env.VITE_TURN_MINT as string | undefined) ?? "").trim() || DEFAULT_MINT;
 
 const turn = (urls: string): RTCIceServer => ({
   urls,
@@ -25,9 +24,10 @@ const turn = (urls: string): RTCIceServer => ({
   credential: FALLBACK_CREDENTIAL,
 });
 
-function turnEndpoint() {
-  const fromEnv = (import.meta.env.VITE_TURN_URL as string | undefined)?.trim();
-  return fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_TURN_URL;
+const PORT_53 = /:53(?:\?|$)/;
+
+export function relayConfigured() {
+  return MINT_URL.length > 0;
 }
 
 /** How long the direct attempt may run before the relay attempt. */
@@ -57,17 +57,7 @@ export function orderRelayUrls(urls: string | string[]): string[] {
 }
 
 function fallbackRelays(): RTCIceServer[] {
-  // Prefer port 443 / TLS — cell carriers often drop classic TURN ports.
-  const openRelay = (urls: string): RTCIceServer => ({
-    urls,
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  });
   return [
-    openRelay("turns:openrelay.metered.ca:443?transport=tcp"),
-    openRelay("turn:openrelay.metered.ca:443?transport=tcp"),
-    openRelay("turn:openrelay.metered.ca:80?transport=tcp"),
-    openRelay("turn:openrelay.metered.ca:443"),
     turn("turns:turn.evan-brass.net:443?transport=tcp"),
     turn("turn:turn.evan-brass.net?transport=tcp"),
     turn("turn:turn.evan-brass.net"),
@@ -92,60 +82,38 @@ function normalizeMinted(servers: RTCIceServer[]): RTCIceServer[] {
   return out;
 }
 
-function asIceServers(raw: unknown): RTCIceServer[] | null {
-  if (!raw || typeof raw !== "object") return null;
-  const list = (raw as { iceServers?: unknown }).iceServers;
-  if (!Array.isArray(list) || list.length === 0) return null;
-  return normalizeMinted(list as RTCIceServer[]);
-}
-
-let cached: { servers: RTCIceServer[]; until: number } | null = null;
-
-/**
- * Fetch (or reuse) Cloudflare-minted TURN. Returns null when the Worker fails
- * so callers can fall back to the public relay instead of STUN-only.
- */
-export async function mintRelay(): Promise<RTCIceServer[] | null> {
-  const now = Date.now();
-  if (cached && cached.until > now + 60_000) return cached.servers;
-
-  const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), 4_000);
-  try {
-    const res = await fetch(turnEndpoint(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-      signal: ctrl.signal,
-    });
-    if (!res.ok) return null;
-    const servers = asIceServers(await res.json());
-    if (!servers?.length) return null;
-    cached = { servers, until: now + 90 * 60_000 };
-    return servers;
-  } catch {
-    return null;
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
-/** @deprecated Prefer mintRelay — kept for older call sites. */
-export async function fetchIceServers(): Promise<RTCIceServer[]> {
-  return (await mintRelay()) ?? fallbackRelays();
-}
-
 export function iceConfiguration(relayOnly: boolean, minted?: RTCIceServer[] | null): RTCConfiguration {
   const relays = minted && minted.length ? normalizeMinted(minted) : fallbackRelays();
   const stun: RTCIceServer[] = [
     { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun.cloudflare.com:3478" },
   ];
   return {
     iceServers: relayOnly ? relays : [...stun, ...relays],
     iceTransportPolicy: relayOnly ? "relay" : "all",
   };
+}
+
+/**
+ * Ask the worker for a short-lived Cloudflare username and password.
+ * Returns null when the worker URL is unset or the mint fails.
+ */
+export async function mintRelay(): Promise<RTCIceServer[] | null> {
+  if (!MINT_URL) return null;
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), 4_000);
+  try {
+    const res = await fetch(MINT_URL, { method: "POST", signal: ctrl.signal });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { iceServers?: unknown };
+    if (!Array.isArray(body.iceServers)) return null;
+    const servers = normalizeMinted(body.iceServers as RTCIceServer[]);
+    return servers.length ? servers : null;
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 /** Relay-only starts after the direct attempt's window, and only once. */

@@ -3,7 +3,8 @@ import { skirmishMap, skirmishMaps } from "../game/map";
 import type { GameRenderer } from "../game/render3d";
 import type { GameSim } from "../game/sim";
 import { createRoomId, inviteLink, parseRoomInput, type NetMsg } from "./protocol";
-import { SkirmishLink } from "./skirmish";
+import { RELAY_STATUS } from "./ice";
+import { ROOM_OPEN_STATUS, SkirmishLink } from "./skirmish";
 
 const DEFAULT_MAP = skirmishMaps()[0].id;
 
@@ -24,6 +25,7 @@ export interface LobbyState {
   joinDraft: string;
   copied: boolean;
   pingMs: number | null;
+  path: string;
   link: "off" | "connecting" | "open" | "failed" | "down";
   /** Map the host has chosen for the next rematch. */
   selectedMapId: string;
@@ -61,6 +63,7 @@ const idleLobby = (): LobbyState => ({
   joinDraft: "",
   copied: false,
   pingMs: null,
+  path: "",
   link: "off",
   selectedMapId: DEFAULT_MAP,
 });
@@ -189,7 +192,9 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
             roomId: id,
             invite: inviteLink(id),
             status:
-              s.status === "Using relay…" || s.status === "Opening path…" ? s.status : "Connecting",
+              s.status === RELAY_STATUS || s.status === ROOM_OPEN_STATUS || s.status.startsWith("Reopening")
+                ? s.status
+                : "Connecting",
           }));
         },
         onConnected: () => {
@@ -205,6 +210,13 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
         onMessage,
         onStatus: (text) => setLobby((s) => ({ ...s, status: text })),
         onDirectFail: (text) => setLobby((s) => ({ ...s, status: text, link: "failed" })),
+        onPath: (kind) => {
+          setLobby((s) => ({
+            ...s,
+            path: kind,
+            status: s.live ? s.status : `Connected · ${kind}`,
+          }));
+        },
         onReject: warnPicture,
         onDown: (text) => {
           const wasLive = liveRef.current;
@@ -244,6 +256,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
       joinDraft: "",
       copied: false,
       pingMs: null,
+      path: "",
       link: "connecting",
       selectedMapId: DEFAULT_MAP,
     });
@@ -274,6 +287,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
         joinDraft: roomId,
         copied: false,
         pingMs: null,
+        path: "",
         link: "connecting",
         selectedMapId: DEFAULT_MAP,
       });
