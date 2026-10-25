@@ -12,8 +12,8 @@ export type MapId = string;
 /** Road index, west to east. A map has 1–3 roads. */
 export type Lane = 0 | 1 | 2;
 export type LaneCount = 1 | 2 | 3;
-/** Bridge belt to hold — matches river layers on the map. */
-export type DefendLayerId = "home" | "mid" | "forward";
+/** Troop stance: own keep, river belts, or enemy keep. */
+export type DefendLayerId = "keep" | "home" | "mid" | "forward" | "assault";
 
 export interface Vec2 {
   x: number;

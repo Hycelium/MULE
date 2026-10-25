@@ -378,10 +378,10 @@ export class GameSim {
     }
     s.defendLayer[team] = layer;
     if (team === this.localTeam) {
-      if (!layer) this.addToast("Standing down from the bridges.");
+      if (!layer) this.addToast("Standing down.");
       else {
-        const label = defendLayerOptions(this.activeMap.seed).find((o) => o.id === layer)?.label ?? "bridges";
-        this.addToast(`Holding ${label.toLowerCase()}.`);
+        const label = defendLayerOptions(this.activeMap.seed).find((o) => o.id === layer)?.label ?? "orders";
+        this.addToast(`${label}.`);
       }
     }
     if (layer) this.assignDefendRallies(team, layer);
@@ -392,7 +392,7 @@ export class GameSim {
     for (const u of this.state.units) {
       if (u.team !== team || u.hp <= 0 || !u.fromBarracks) continue;
       if (this.isPlayerDriven(u)) continue;
-      u.rallyPoint = defendPointFor(seed, layer, u.lane, u.id);
+      u.rallyPoint = defendPointFor(seed, layer, u.lane, u.id, team);
       u.engageFrom = undefined;
       u.aiHeldForRush = false;
       u.aiStagingPoint = undefined;
@@ -402,7 +402,7 @@ export class GameSim {
   private defendDest(u: Unit): Vec2 | null {
     const layer = this.state.defendLayer[u.team];
     if (!layer || !u.fromBarracks) return null;
-    return defendPointFor(this.activeMap.seed, layer, u.lane, u.id);
+    return defendPointFor(this.activeMap.seed, layer, u.lane, u.id, u.team);
   }
 
   private next() {
@@ -1754,7 +1754,7 @@ export class GameSim {
       chargeReady: kind === "runner",
       ignoreEnemyCreeps: !fromBarracks,
       rallyPoint: holdLayer
-        ? defendPointFor(this.activeMap.seed, holdLayer, lane, id)
+        ? defendPointFor(this.activeMap.seed, holdLayer, lane, id, team)
         : barracks?.rallyPoint
           ? { ...barracks.rallyPoint }
           : undefined,

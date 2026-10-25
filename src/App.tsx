@@ -6,7 +6,6 @@ import type { BuildingKind, CombatEventKind, RectHit, TrainKind, UiSnapshot } fr
 import { BUILD_COST } from "./game/balance";
 import { Hud } from "./ui/Hud";
 import { BuildBar } from "./ui/BuildBar";
-import { DefendBar } from "./ui/DefendBar";
 import { DetailSheet } from "./ui/DetailSheet";
 import { KeepTugBar } from "./ui/KeepTugBar";
 import { Overlays } from "./ui/Overlays";
@@ -917,6 +916,25 @@ export default function App() {
 
   const clusterActions: ClusterAction[] = [
     {
+      id: "escape",
+      icon: "⎋",
+      label: "Escape",
+      hint: ui.possessed ? "Leave the soldier (Esc)" : "Cancel selection (Esc)",
+      onPress: () => {
+        if (ui.possessed) {
+          sim.releasePossess("esc");
+          document.exitPointerLock();
+        } else {
+          sim.cancelSelection();
+          setPatrol(false);
+          setRadial(null);
+        }
+        setClusterOpen(false);
+        refreshUi();
+        beep(240);
+      },
+    },
+    {
       id: "recall",
       icon: "🔔",
       label: "Recall",
@@ -964,17 +982,34 @@ export default function App() {
         beep(280);
       },
     },
-    {
-      id: "reset-cam",
-      icon: "⟲",
-      label: "Reset view",
-      hint: "Reset camera (R)",
-      onPress: () => {
-        rendererRef.current?.resetCamera();
-        setZoomT(rendererRef.current?.getZoomT() ?? 0.4);
-      },
-    },
   ];
+  if (ui.phase === "running") {
+    for (const layer of ui.defendLayers) {
+      clusterActions.push({
+        id: `defend-${layer.id}`,
+        icon: layer.id === "assault" ? "⚔" : layer.id === "keep" ? "🛡" : "🌉",
+        label: layer.label,
+        hint: `Concentrate barracks troops — ${layer.label}`,
+        active: ui.defendLayer === layer.id,
+        disabled: ui.phase !== "running",
+        onPress: () => {
+          sim.setDefendLayer(ui.defendLayer === layer.id ? null : layer.id);
+          refreshUi();
+          beep(ui.defendLayer === layer.id ? 260 : 420);
+        },
+      });
+    }
+  }
+  clusterActions.push({
+    id: "reset-cam",
+    icon: "⟲",
+    label: "Reset view",
+    hint: "Reset camera (R)",
+    onPress: () => {
+      rendererRef.current?.resetCamera();
+      setZoomT(rendererRef.current?.getZoomT() ?? 0.4);
+    },
+  });
   if (fsSupported) {
     clusterActions.push({
       id: "fullscreen",
@@ -1520,26 +1555,16 @@ export default function App() {
         </div>
 
         {ui.phase === "running" && (
-          <>
-            <DefendBar
-              ui={ui}
-              onDefend={(layer) => {
-                sim.setDefendLayer(layer);
-                refreshUi();
-                beep(layer ? 420 : 260);
-              }}
-            />
-            <BuildBar
-              ui={ui}
-              compact={compactBuild}
-              getCost={(k) => BUILD_COST[k]!}
-              onSelect={onSelectBuild}
-              onCancel={() => {
-                sim.cancelSelection();
-                refreshUi();
-              }}
-            />
-          </>
+          <BuildBar
+            ui={ui}
+            compact={compactBuild}
+            getCost={(k) => BUILD_COST[k]!}
+            onSelect={onSelectBuild}
+            onCancel={() => {
+              sim.cancelSelection();
+              refreshUi();
+            }}
+          />
         )}
       </div>
     </div>
