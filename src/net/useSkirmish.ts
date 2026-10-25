@@ -13,7 +13,7 @@ import {
   type NetMsg,
   type RosterSeat,
 } from "./protocol";
-import { emoteById, pushChatLine, sanitizeChatText, type ChatLine } from "./chat";
+import { emoteById, pruneChatLines, pushChatLine, sanitizeChatText, type ChatLine } from "./chat";
 import { RELAY_STATUS } from "./ice";
 import { ROOM_OPEN_STATUS, SkirmishLink } from "./skirmish";
 
@@ -338,6 +338,17 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     },
     [sendChatPayload],
   );
+
+  useEffect(() => {
+    if (!lobby.live) return;
+    const id = window.setInterval(() => {
+      setChatLines((lines) => {
+        const next = pruneChatLines(lines);
+        return next.length === lines.length ? lines : next;
+      });
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [lobby.live]);
 
   const openLink = useCallback(
     (role: "host" | "guest", roomId: string) => {

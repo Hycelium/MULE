@@ -1152,32 +1152,47 @@ export default function App() {
           <span className="brand-sub">three.js siege · dusk valley</span>
         </header>
 
-        <Hud
-          ui={ui}
-          compact={compactHud}
-          quality={quality}
-          onQuality={onQuality}
-          onPause={() => {
-            sim.togglePause();
-            refreshUi();
-          }}
-          onSpeed={() => {
-            sim.toggleSpeed();
-            refreshUi();
-          }}
-          onSound={() => {
-            sim.unlockAudio();
-            if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-            void audioCtxRef.current.resume();
-            sim.setSound(!sim.getState().soundOn);
-            refreshUi();
-          }}
-          onRush={() => {
-            sim.rushNextWave();
-            refreshUi();
-            beep(500);
-          }}
-        />
+        {(() => {
+          const hud = (
+            <Hud
+              ui={ui}
+              compact={compactHud}
+              quality={quality}
+              onQuality={onQuality}
+              onPause={() => {
+                sim.togglePause();
+                refreshUi();
+              }}
+              onSpeed={() => {
+                sim.toggleSpeed();
+                refreshUi();
+              }}
+              onSound={() => {
+                sim.unlockAudio();
+                if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+                void audioCtxRef.current.resume();
+                sim.setSound(!sim.getState().soundOn);
+                refreshUi();
+              }}
+              onRush={() => {
+                sim.rushNextWave();
+                refreshUi();
+                beep(500);
+              }}
+            />
+          );
+          if (!(layout.layout === "side" && layout.phone)) return hud;
+          return (
+            <div className="side-col">
+              {hud}
+              {skirmish.lobby.live && ui.phase === "running" && (
+                <div className="side-chat">
+                  <ChatLog lines={skirmish.chatLines} localTeam={skirmish.lobby.localTeam} />
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className={sheetOpen ? "stage sheet-open" : "stage"} ref={stageRef}>
           <canvas ref={canvasRef} className={ui.possessed ? "battlefield possessed" : "battlefield"} />
@@ -1364,7 +1379,7 @@ export default function App() {
                   : null
               }
             />
-            {skirmish.lobby.live && (
+            {skirmish.lobby.live && !layout.phone && (
               <ChatLog lines={skirmish.chatLines} localTeam={skirmish.lobby.localTeam} />
             )}
           </div>
