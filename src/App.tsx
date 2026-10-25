@@ -58,6 +58,7 @@ const defaultUi: UiSnapshot = {
   selectedCanUpgradeRate: false,
   selectedCanRaze: false,
   selectedCanConsecrate: false,
+  selectedIsMidHouse: false,
   selectedRazeRefund: 0,
   selectedRazeRefundWood: 0,
   selectedTrainPct: null,
