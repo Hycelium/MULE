@@ -8,8 +8,6 @@ export const ARENA_LADDER: UnitKind[] = ["peon", "levy", "archer", "ward", "runn
 /** Kills needed on each rung before promote (runner's 5 clears the ladder / wins). */
 export const ARENA_KILLS_NEEDED = [1, 1, 2, 3, 5] as const;
 export const ARENA_BOT_COUNT = 6;
-/** Skirmish Final Duel unlock (seconds). */
-export const FINAL_DUEL_AFTER = 600;
 /** Half-extent of the playable courtyard (sim units). */
 export const ARENA_HALF = 108;
 export const ARENA_CX = WORLD_W / 2;

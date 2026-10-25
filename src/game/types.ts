@@ -512,7 +512,7 @@ export interface UiSnapshot {
   arenaProgress: number;
   arenaNeed: number;
   arenaStandings: ArenaStandingUi[];
-  /** Match clock seconds (skirmish Final Duel unlock). */
+  /** Match clock seconds. */
   matchTime: number;
   finalDuel: {
     phase: FinalDuelPhase;

@@ -119,7 +119,6 @@ import {
   ARENA_BOT_COUNT,
   ARENA_LADDER,
   ARENA_RESPAWN_DELAY,
-  FINAL_DUEL_AFTER,
   arenaKillsNeeded,
   arenaMap,
   arenaRungKind,
@@ -3957,7 +3956,7 @@ export class GameSim {
     }
   }
 
-  /** After 10 minutes of skirmish, either side may propose Final Duel. */
+  /** Either side may propose Final Duel anytime; the foe must accept. */
   proposeFinalDuel() {
     if (this.matchMode !== "pvp" || this.state.phase !== "running") return false;
     if (this.redirect({ t: "duelPropose", team: this.localTeam })) return true;
@@ -3980,7 +3979,6 @@ export class GameSim {
     const s = this.state;
     const duel = s.finalDuel;
     if (!duel || duel.phase !== "off") return false;
-    if (s.time < FINAL_DUEL_AFTER) return false;
     if (s.arena?.duel) return false;
     duel.phase = "proposed";
     duel.proposedBy = team;
@@ -5889,7 +5887,6 @@ export class GameSim {
               this.matchMode === "pvp" &&
               s.phase === "running" &&
               s.finalDuel.phase === "off" &&
-              s.time >= FINAL_DUEL_AFTER &&
               !s.arena?.duel,
             canAccept:
               this.matchMode === "pvp" &&

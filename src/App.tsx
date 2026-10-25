@@ -1084,7 +1084,7 @@ export default function App() {
       id: "final-duel",
       icon: "⚔",
       label: "Final Duel",
-      hint: "Challenge the foe to a courtyard duel (runner, then ward). Match ends when a ward falls.",
+      hint: "Propose a courtyard duel anytime. The foe must accept. Runner, then ward — match ends when a ward falls.",
       onPress: () => {
         sim.proposeFinalDuel();
         setClusterOpen(false);
