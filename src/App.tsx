@@ -193,6 +193,7 @@ export default function App() {
     canvasRef.current?.requestPointerLock();
   }, []);
   const [clusterOpen, setClusterOpen] = useState(false);
+  const [menuConfirm, setMenuConfirm] = useState(false);
   const [touchDrag, setTouchDrag] = useState<TouchDragMode>(() => {
     try {
       return localStorage.getItem(DRAG_MODE_KEY) === "camera" ? "camera" : "select";
@@ -986,8 +987,38 @@ export default function App() {
   const sheetOpen = ui.selectedKeepTeam === ui.localTeam || Boolean(ui.selectedBuildingId && ui.selectedBuildingKind);
   const compactHud = layout.layout === "column" || layout.phone;
   const compactBuild = layout.layout === "column" && layout.phone;
+  /** Arena: Commands while paused or waiting on the respawn screen (no body). */
+  const showCommandRail =
+    ui.phase === "running" && (!ui.arena || ui.paused || !ui.possessed);
+
+  const returnToMenu = () => {
+    lockWantedRef.current = false;
+    document.exitPointerLock();
+    setMenuConfirm(false);
+    setClusterOpen(false);
+    setCampaignOpen(false);
+    setPatrol(false);
+    setRadial(null);
+    if (skirmish.lobby.live || ui.pvp) skirmish.leave();
+    else sim.reset();
+    onReturnToTitle();
+    refreshUi();
+    hpRef.current = 100;
+    beep(220);
+  };
 
   const clusterActions: ClusterAction[] = [
+    {
+      id: "back-menu",
+      icon: "⌂",
+      label: "Back to menu",
+      hint: "Leave this match and return to the title screen",
+      danger: true,
+      onPress: () => {
+        setClusterOpen(false);
+        setMenuConfirm(true);
+      },
+    },
     {
       id: "escape",
       icon: "⎋",
@@ -1015,6 +1046,7 @@ export default function App() {
       icon: "🔔",
       label: "Recall",
       hint: "Recall all peons to your keep",
+      disabled: !!ui.arena,
       onPress: () => {
         sim.callVillagersHome(sim.getLocalTeam());
         refreshUi();
@@ -1458,9 +1490,9 @@ export default function App() {
               onDismiss={dismissRadial}
             />
           )}
-          {ui.phase === "running" && !ui.arena && (
+          {showCommandRail && (
           <div className="banner-rail">
-            {ui.idlePeonCount > 0 && (
+            {!ui.arena && ui.idlePeonCount > 0 && (
               <button
                 type="button"
                 className="pennant work-pennant"
@@ -1479,7 +1511,7 @@ export default function App() {
             <ControlCluster
               expanded={clusterOpen}
               onToggle={setClusterOpen}
-              actions={clusterActions}
+              actions={ui.arena ? clusterActions.filter((a) => a.id === "back-menu" || a.id === "escape" || a.id === "reset-cam" || a.id === "fullscreen") : clusterActions}
               touch={layout.touch}
               flip={sheetOpen}
               dragMode={touchDrag}
@@ -1490,15 +1522,30 @@ export default function App() {
                 setZoomT(t);
               }}
               chat={
-                skirmish.lobby.live
+                skirmish.lobby.live && !ui.arena
                   ? { onSend: skirmish.sendChat, onEmote: skirmish.sendEmote }
                   : null
               }
             />
-            {skirmish.lobby.live && !layout.phone && (
+            {skirmish.lobby.live && !layout.phone && !ui.arena && (
               <ChatLog lines={skirmish.chatLines} localTeam={skirmish.lobby.localTeam} />
             )}
           </div>
+          )}
+          {menuConfirm && (
+            <div className="menu-confirm-overlay" role="presentation">
+              <div className="raze-confirm menu-confirm" role="alertdialog" aria-labelledby="menu-confirm-title" aria-modal="true">
+                <p id="menu-confirm-title">Are you sure you&apos;d like to return to the menu?</p>
+                <div className="raze-confirm-actions">
+                  <button type="button" className="ghost" onClick={() => setMenuConfirm(false)}>
+                    Cancel
+                  </button>
+                  <button type="button" className="danger-btn" onClick={returnToMenu}>
+                    Return
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
           {!layout.touch && (
             <p className="cam-hint">Drag-select · right-click orders · right-drag orbit · Shift-drag pan · wheel zoom</p>
