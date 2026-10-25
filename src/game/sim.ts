@@ -80,6 +80,8 @@ import {
 import {
   buildNodes,
   buildPads,
+  defendLayerOptions,
+  defendPointFor,
   generateMap,
   getOrCreateCampaignMap,
   keepPos,
@@ -119,6 +121,7 @@ import type {
   Barricade,
   Building,
   BuildingKind,
+  DefendLayerId,
   GameState,
   Lane,
   MapDef,
@@ -352,7 +355,54 @@ export class GameSim {
       matchXpEarned: 0,
       lastXpGain: 0,
       won: null,
+      defendLayer: { you: null, foe: null },
     };
+  }
+
+  /** Concentrate barracks troops on a river-bridge layer (or stand down). */
+  setDefendLayer(layer: DefendLayerId | null, team: Team = this.localTeam) {
+    if (
+      team === this.localTeam &&
+      this.redirect({ t: "defend", team, layer })
+    ) {
+      return;
+    }
+    this.applyDefendLayer(team, layer);
+  }
+
+  private applyDefendLayer(team: Team, layer: DefendLayerId | null) {
+    const s = this.state;
+    if (layer) {
+      const ok = defendLayerOptions(this.activeMap.seed).some((o) => o.id === layer);
+      if (!ok) return;
+    }
+    s.defendLayer[team] = layer;
+    if (team === this.localTeam) {
+      if (!layer) this.addToast("Standing down from the bridges.");
+      else {
+        const label = defendLayerOptions(this.activeMap.seed).find((o) => o.id === layer)?.label ?? "bridges";
+        this.addToast(`Holding ${label.toLowerCase()}.`);
+      }
+    }
+    if (layer) this.assignDefendRallies(team, layer);
+  }
+
+  private assignDefendRallies(team: Team, layer: DefendLayerId) {
+    const seed = this.activeMap.seed;
+    for (const u of this.state.units) {
+      if (u.team !== team || u.hp <= 0 || !u.fromBarracks) continue;
+      if (this.isPlayerDriven(u)) continue;
+      u.rallyPoint = defendPointFor(seed, layer, u.lane, u.id);
+      u.engageFrom = undefined;
+      u.aiHeldForRush = false;
+      u.aiStagingPoint = undefined;
+    }
+  }
+
+  private defendDest(u: Unit): Vec2 | null {
+    const layer = this.state.defendLayer[u.team];
+    if (!layer || !u.fromBarracks) return null;
+    return defendPointFor(this.activeMap.seed, layer, u.lane, u.id);
   }
 
   private next() {
@@ -1675,10 +1725,13 @@ export class GameSim {
       damage *= DAMAGE_MULT[barracks.damageRank];
       cooldown *= RATE_MULT[barracks.rateRank];
     }
-    const aiHeldForRush = this.matchMode === "ai" && team === "foe" && fromBarracks;
+    const holdLayer = fromBarracks ? this.state.defendLayer[team] : null;
+    const aiHeldForRush =
+      this.matchMode === "ai" && team === "foe" && fromBarracks && !holdLayer;
     const stagingY = 138 + lane * 8;
+    const id = this.next();
     const u: Unit = {
-      id: this.next(),
+      id,
       team,
       kind,
       lane,
@@ -1700,7 +1753,11 @@ export class GameSim {
       fromBarracks,
       chargeReady: kind === "runner",
       ignoreEnemyCreeps: !fromBarracks,
-      rallyPoint: barracks?.rallyPoint ? { ...barracks.rallyPoint } : undefined,
+      rallyPoint: holdLayer
+        ? defendPointFor(this.activeMap.seed, holdLayer, lane, id)
+        : barracks?.rallyPoint
+          ? { ...barracks.rallyPoint }
+          : undefined,
       aiHeldForRush,
       aiStagingPoint: aiHeldForRush
         ? {
@@ -2300,6 +2357,16 @@ export class GameSim {
       if (u.siegePhase === "packed") {
         this.marchSiegeOnRoad(u, team, u.rallyPoint, dt);
         if (dist(u.pos, u.rallyPoint) < 5) u.rallyPoint = undefined;
+      } else {
+        this.pinSiegeToRoad(u, team, dt);
+      }
+      return;
+    }
+    const hold = this.defendDest(u);
+    if (hold) {
+      this.driveSiegeStance(u, dt, true);
+      if (u.siegePhase === "packed" && dist(u.pos, hold) > 6) {
+        this.marchSiegeOnRoad(u, team, hold, dt);
       } else {
         this.pinSiegeToRoad(u, team, dt);
       }
@@ -3165,6 +3232,11 @@ export class GameSim {
           if (dist(u.pos, u.rallyPoint) < 5) u.rallyPoint = undefined;
           continue;
         }
+        const hold = this.defendDest(u);
+        if (hold && dist(u.pos, hold) > 6) {
+          moveTowards(u.pos, hold, u.speed, dt);
+          continue;
+        }
       }
       if (!u.fromBarracks && u.kind === "archer") {
         const rangedUnits = enemies
@@ -3779,6 +3851,7 @@ export class GameSim {
       this.aiTimer -= dt;
       if (this.aiTimer <= 0) {
         runAiTurn(this, AI_RESERVE);
+        this.aiPickDefendLayer();
         const iq = foeBrainStats().intellect;
         this.aiTimer = Math.max(0.72, 1.85 - iq * 0.0115);
       }
@@ -4145,6 +4218,28 @@ export class GameSim {
     return this.enqueueTrain(train, "foe");
   }
 
+  /** Foe holds home when pressed, otherwise mid/forward bridges. */
+  private aiPickDefendLayer() {
+    const opts = defendLayerOptions(this.activeMap.seed);
+    if (opts.length === 0) return;
+    const troops = this.state.units.filter((u) => u.team === "foe" && u.fromBarracks && u.hp > 0).length;
+    if (troops === 0) {
+      if (this.state.defendLayer.foe) this.applyDefendLayer("foe", null);
+      return;
+    }
+    const pressed =
+      this.state.units.filter((u) => u.team === "you" && u.hp > 0 && u.pos.y < WORLD_H * 0.45).length >= 3 ||
+      this.state.keeps.foe.hp < this.state.keeps.foe.maxHp * 0.55;
+    let pick: DefendLayerId =
+      opts.find((o) => o.id === "home")?.id ?? opts[0]!.id;
+    if (!pressed) {
+      if (this.state.waveIndex >= 6 && opts.some((o) => o.id === "forward")) pick = "forward";
+      else if (opts.some((o) => o.id === "mid")) pick = "mid";
+      else pick = opts[opts.length - 1]!.id;
+    }
+    if (this.state.defendLayer.foe !== pick) this.applyDefendLayer("foe", pick);
+  }
+
   aiTrainUnits() {
     if (this.campaignMission) {
       this.aiEnqueueTrain(this.campaignMission.unit);
@@ -4248,6 +4343,9 @@ export class GameSim {
           break;
         case "rally":
           this.setRally(team, order.buildingId, { x: order.x, y: order.y });
+          break;
+        case "defend":
+          this.applyDefendLayer(team, order.layer);
           break;
         case "barricade":
           this.tryPlaceBarricade({ x: order.x, y: order.y }, team, order.builderId);
@@ -4437,6 +4535,7 @@ export class GameSim {
         foe: this.drivenUnitForTeam("foe"),
       },
       drivenBy: this.exportDrivenBy(),
+      defendLayer: { you: s.defendLayer.you, foe: s.defendLayer.foe },
     };
   }
 
@@ -4589,6 +4688,9 @@ export class GameSim {
     s.won = snap.won;
     s.endReason = snap.endReason;
     s.keepLevel = snap.keepLevel;
+    if (snap.defendLayer) {
+      s.defendLayer = { you: snap.defendLayer.you ?? null, foe: snap.defendLayer.foe ?? null };
+    }
     s.gold.you = snap.gold.you;
     s.gold.foe = snap.gold.foe;
     s.wood.you = snap.wood.you;
@@ -4925,6 +5027,8 @@ export class GameSim {
             aimLabel: this.possessAimLabel(s),
           }
         : null,
+      defendLayer: s.defendLayer[view],
+      defendLayers: defendLayerOptions(mapView.seed),
     };
   }
 }

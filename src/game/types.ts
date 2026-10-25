@@ -12,6 +12,8 @@ export type MapId = string;
 /** Road index, west to east. A map has 1–3 roads. */
 export type Lane = 0 | 1 | 2;
 export type LaneCount = 1 | 2 | 3;
+/** Bridge belt to hold — matches river layers on the map. */
+export type DefendLayerId = "home" | "mid" | "forward";
 
 export interface Vec2 {
   x: number;
@@ -318,6 +320,8 @@ export interface GameState {
   possessAimBarricadeId: number | null;
   /** Enemy trebuchet in the sights while possessing an engine. */
   possessAimUnitId: number | null;
+  /** Barracks troops concentrate on this river belt when set. */
+  defendLayer: Record<Team, DefendLayerId | null>;
 }
 
 export interface QueueSlotUi {
@@ -420,6 +424,10 @@ export interface UiSnapshot {
   freshHold: boolean;
   /** Set while the local player is in first person on a soldier. */
   possessed: PossessedUi | null;
+  /** Active bridge layer to hold, or null for stand-down. */
+  defendLayer: DefendLayerId | null;
+  /** Bridge belts available on this map (1–3). */
+  defendLayers: { id: DefendLayerId; label: string }[];
 }
 
 export interface RectHit {

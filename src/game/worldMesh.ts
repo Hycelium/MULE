@@ -2,7 +2,18 @@ import * as THREE from "three";
 import { WORLD_H, WORLD_W } from "./balance";
 import { groundLookForSeed, groundTexture, wheatTexture } from "./groundLooks";
 import { buildRockPile, buildTree, SCENERY_TREES } from "./models/nature";
-import { BACK_FIELD, MAP_CX, mapBounds, mapLanes, riverSpec, rngFromSeed, roadCenterX } from "./map";
+import {
+  BACK_FIELD,
+  MAP_CX,
+  bridgeCrossing,
+  mapBounds,
+  mapLanes,
+  riverLayers,
+  riverYAt,
+  rngFromSeed,
+  roadCenterX,
+  type RiverBand,
+} from "./map";
 import { buildBackdrop, buildCliffs, buildValleyLakes, canyonCenterX, fbm, valleyLakeT } from "./landscape";
 import type { Team } from "./types";
 
@@ -55,7 +66,7 @@ function roadGap(seed: number, x: number, y: number) {
   return Math.min(...mapLanes(seed).map((lane) => Math.abs(x - roadCenterX(seed, lane, y))));
 }
 
-function sampleGround(simX: number, simY: number, seed: number, river: ReturnType<typeof riverSpec>) {
+function sampleGround(simX: number, simY: number, seed: number, rivers: RiverBand[]) {
   const { minX, maxX, width } = mapBounds(seed);
   let h = fbm(simX * 0.012, simY * 0.01, seed) * 9;
   h += fbm(simX * 0.05, simY * 0.05, seed + 3) * 2.4;
@@ -63,8 +74,16 @@ function sampleGround(simX: number, simY: number, seed: number, river: ReturnTyp
 
   // Flatten playable strip + roads
   const onRoad = simY > 40 && simY < WORLD_H - 40 && roadGap(seed, simX, simY) < 22;
-  const riverY = river.y + Math.sin((simX / WORLD_W) * Math.PI * 2 + river.phase) * river.amplitude;
-  const onRiver = river.enabled && Math.abs(simY - riverY) < river.width * 0.62;
+  let onRiver = false;
+  let riverY = simY;
+  for (const river of rivers) {
+    const ry = riverYAt(river, simX);
+    if (Math.abs(simY - ry) < river.width * 0.62) {
+      onRiver = true;
+      riverY = ry;
+      break;
+    }
+  }
   const inField = simX > minX + 20 && simX < maxX - 20 && simY > -20 && simY < WORLD_H + 40;
   if (onRiver) h = -2.2;
   else if (onRoad) h *= 0.05;
@@ -100,7 +119,7 @@ function sampleGround(simX: number, simY: number, seed: number, river: ReturnTyp
 /** High-poly displaced battlefield; ground look (painted / textured, wheat patches) rotates per seed. */
 export function buildTerrain(seed: number) {
   const g = new THREE.Group();
-  const river = riverSpec(seed);
+  const rivers = riverLayers(seed);
   const look = groundLookForSeed(seed);
   const { minX, width } = mapBounds(seed);
   const segsX = Math.round((200 * width) / WORLD_W);
@@ -123,7 +142,7 @@ export function buildTerrain(seed: number) {
   for (let i = 0; i < pos.count; i++) {
     const simX = pos.getX(i) + WORLD_W / 2;
     const simY = pos.getZ(i) + WORLD_H / 2;
-    const s = sampleGround(simX, simY, seed, river);
+    const s = sampleGround(simX, simY, seed, rivers);
     pos.setY(i, s.h);
     uv.setXY(i, uv.getX(i) * (sizeX / 14), uv.getY(i) * (sizeZ / 14));
 
@@ -162,30 +181,26 @@ export function buildTerrain(seed: number) {
   ground.castShadow = false;
   g.add(ground);
 
-  if (look.wheat) g.add(buildWheatPatches(seed, river));
+  if (look.wheat) g.add(buildWheatPatches(seed, rivers));
 
-  // River ribbon first; roads cross it on timber/stone bridges.
-  if (river.enabled) {
+  // River ribbons first; each road crosses every belt on a timber bridge.
+  const waterMat = new THREE.MeshPhysicalMaterial({
+    color: 0x3f91b0,
+    roughness: 0.22,
+    metalness: 0.05,
+    transparent: true,
+    opacity: 0.88,
+    clearcoat: 0.7,
+    clearcoatRoughness: 0.18,
+  });
+  for (const river of rivers) {
     const waterPts: THREE.Vector3[] = [];
     for (let i = 0; i <= 64; i++) {
       const simX = minX - 30 + (i / 64) * (width + 60);
-      const simY = river.y + Math.sin((simX / WORLD_W) * Math.PI * 2 + river.phase) * river.amplitude;
+      const simY = riverYAt(river, simX);
       waterPts.push(new THREE.Vector3(simX - WORLD_W / 2, -0.5, simY - WORLD_H / 2));
     }
-    const water = makeRibbon(
-      waterPts,
-      river.width,
-      new THREE.MeshPhysicalMaterial({
-        color: 0x3f91b0,
-        roughness: 0.22,
-        metalness: 0.05,
-        transparent: true,
-        opacity: 0.88,
-        clearcoat: 0.7,
-        clearcoatRoughness: 0.18,
-      }),
-    );
-    g.add(water);
+    g.add(makeRibbon(waterPts, river.width, waterMat.clone()));
   }
 
   // Raised curved cobble roads
@@ -227,21 +242,15 @@ export function buildTerrain(seed: number) {
       }
     }
 
-    if (river.enabled) {
-      // Solve crossing approximately; river meanders horizontally while road meanders vertically.
-      let crossY = river.y;
-      for (let pass = 0; pass < 3; pass++) {
-        const crossX = roadCenterX(seed, i, crossY);
-        crossY = river.y + Math.sin((crossX / WORLD_W) * Math.PI * 2 + river.phase) * river.amplitude;
-      }
-      const crossX = roadCenterX(seed, i, crossY);
-      const x0 = roadCenterX(seed, i, crossY - 8);
-      const x1 = roadCenterX(seed, i, crossY + 8);
+    for (const river of rivers) {
+      const cross = bridgeCrossing(seed, i, river);
+      const x0 = roadCenterX(seed, i, cross.y - 8);
+      const x1 = roadCenterX(seed, i, cross.y + 8);
       const bridge = new THREE.Mesh(
         new THREE.BoxGeometry(34, 1.8, river.width + 12, 6, 1, 5),
         new THREE.MeshStandardMaterial({ color: 0x80613b, roughness: 0.82, metalness: 0.04 }),
       );
-      bridge.position.set(crossX - WORLD_W / 2, 1.1, crossY - WORLD_H / 2);
+      bridge.position.set(cross.x - WORLD_W / 2, 1.1, cross.y - WORLD_H / 2);
       bridge.rotation.y = Math.atan2(x1 - x0, 16);
       bridge.castShadow = true;
       bridge.receiveShadow = true;
@@ -252,8 +261,8 @@ export function buildTerrain(seed: number) {
   return g;
 }
 
-/** Striped crop fields draped on the terrain, kept clear of roads and the river. */
-function buildWheatPatches(seed: number, river: ReturnType<typeof riverSpec>) {
+/** Striped crop fields draped on the terrain, kept clear of roads and the rivers. */
+function buildWheatPatches(seed: number, rivers: RiverBand[]) {
   const g = new THREE.Group();
   const rng = rngFromSeed(seed ^ 0x3c3c);
   const tex = wheatTexture();
@@ -272,15 +281,14 @@ function buildWheatPatches(seed: number, river: ReturnType<typeof riverSpec>) {
     const w = 30 + rng() * 30;
     const d = 22 + rng() * 22;
     const r = Math.hypot(w, d) / 2;
-    const riverY = river.y + Math.sin((cx / WORLD_W) * Math.PI * 2 + river.phase) * river.amplitude;
     if (roadGap(seed, cx, cy) < r + 18) continue;
-    if (river.enabled && Math.abs(cy - riverY) < r + river.width) continue;
+    if (rivers.some((river) => Math.abs(cy - riverYAt(river, cx)) < r + river.width)) continue;
 
     const geo = new THREE.PlaneGeometry(w, d, 12, 12).rotateX(-Math.PI / 2).rotateY(rng() * Math.PI);
     const p = geo.attributes.position as THREE.BufferAttribute;
     const puv = geo.attributes.uv as THREE.BufferAttribute;
     for (let j = 0; j < p.count; j++) {
-      p.setY(j, sampleGround(cx + p.getX(j), cy + p.getZ(j), seed, river).h + 0.7);
+      p.setY(j, sampleGround(cx + p.getX(j), cy + p.getZ(j), seed, rivers).h + 0.7);
       puv.setXY(j, puv.getX(j) * (w / 20), puv.getY(j) * (d / 20));
     }
     geo.computeVertexNormals();

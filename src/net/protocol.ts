@@ -1,6 +1,7 @@
 import { skirmishMap } from "../game/map";
 import type {
   BuildingKind,
+  DefendLayerId,
   GamePhase,
   Lane,
   MapDef,
@@ -40,7 +41,8 @@ export type RemoteOrder =
   | { t: "drive"; team: Team; id: number; w: boolean; a: boolean; s: boolean; d: boolean; yaw: number }
   | { t: "strike"; team: Team }
   | { t: "possess"; team: Team; id: number }
-  | { t: "unpossess"; team: Team };
+  | { t: "unpossess"; team: Team }
+  | { t: "defend"; team: Team; layer: DefendLayerId | null };
 
 export interface SnapKeep {
   hp: number;
@@ -172,6 +174,8 @@ export interface MatchSnapshot {
   driven?: Record<Team, number | null>;
   /** First-person body keyed by player id. */
   drivenBy?: Record<string, number | null>;
+  /** Bridge belt each team is holding. */
+  defendLayer?: Record<Team, DefendLayerId | null>;
 }
 
 /** Host + guests in a room. Auto-balanced across the two keeps. */
@@ -229,6 +233,7 @@ const ORDER_TYPES = new Set<RemoteOrder["t"]>([
   "strike",
   "possess",
   "unpossess",
+  "defend",
 ]);
 
 export function createRoomId() {

@@ -6,6 +6,7 @@ import type { BuildingKind, CombatEventKind, RectHit, TrainKind, UiSnapshot } fr
 import { BUILD_COST } from "./game/balance";
 import { Hud } from "./ui/Hud";
 import { BuildBar } from "./ui/BuildBar";
+import { DefendBar } from "./ui/DefendBar";
 import { DetailSheet } from "./ui/DetailSheet";
 import { KeepTugBar } from "./ui/KeepTugBar";
 import { Overlays } from "./ui/Overlays";
@@ -91,6 +92,8 @@ const defaultUi: UiSnapshot = {
   freshUnlock: "",
   freshHold: false,
   possessed: null,
+  defendLayer: null,
+  defendLayers: [],
 };
 
 const LONG_PRESS_MS = 350;
@@ -1517,16 +1520,26 @@ export default function App() {
         </div>
 
         {ui.phase === "running" && (
-          <BuildBar
-            ui={ui}
-            compact={compactBuild}
-            getCost={(k) => BUILD_COST[k]!}
-            onSelect={onSelectBuild}
-            onCancel={() => {
-              sim.cancelSelection();
-              refreshUi();
-            }}
-          />
+          <>
+            <DefendBar
+              ui={ui}
+              onDefend={(layer) => {
+                sim.setDefendLayer(layer);
+                refreshUi();
+                beep(layer ? 420 : 260);
+              }}
+            />
+            <BuildBar
+              ui={ui}
+              compact={compactBuild}
+              getCost={(k) => BUILD_COST[k]!}
+              onSelect={onSelectBuild}
+              onCancel={() => {
+                sim.cancelSelection();
+                refreshUi();
+              }}
+            />
+          </>
         )}
       </div>
     </div>
