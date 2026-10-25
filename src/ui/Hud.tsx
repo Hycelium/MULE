@@ -14,7 +14,6 @@ interface HudProps {
 }
 
 export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound, onRush }: HudProps) {
-  const hpPct = Math.max(0, Math.min(1, ui.yourHp / ui.yourMaxHp));
   const xpPct = ui.keepXpPct;
   const phaseLabel =
     ui.wavePhase === "build"
@@ -30,10 +29,15 @@ export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound
     <div className={compact ? "hud compact" : "hud"}>
       <div className="hud-top">
         <div className="stat lives">
-          <span className="label">LIVES</span>
-          <span className={ui.yourHp <= 80 ? "value danger" : "value"}>{ui.yourHp}</span>
+          <span className="label">ARMY</span>
+          <span className={ui.armyCount >= ui.armyCap ? "value danger" : "value"}>
+            {ui.armyCount}/{ui.armyCap}
+          </span>
           <div className="bar">
-            <div className="fill" style={{ width: `${hpPct * 100}%` }} />
+            <div
+              className="fill"
+              style={{ width: `${Math.max(0, Math.min(1, ui.armyCount / Math.max(1, ui.armyCap))) * 100}%` }}
+            />
           </div>
         </div>
         <div className="stat">

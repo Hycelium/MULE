@@ -1633,6 +1633,17 @@ export class GameSim {
     return alive + queued;
   }
 
+  /** Gold + wood sunk into living barracks troops (relative army strength). */
+  armyFieldCost(team: Team) {
+    let total = 0;
+    for (const u of this.state.units) {
+      if (u.team !== team || !u.fromBarracks || u.hp <= 0) continue;
+      const def = UNIT_DEFS[u.kind];
+      total += (def.cost ?? 0) + (def.woodCost ?? 0);
+    }
+    return total;
+  }
+
   private isTrainHall(kind: BuildingKind) {
     return kind === "barracks" || kind === "church";
   }
@@ -5124,6 +5135,8 @@ export class GameSim {
       peonCap: this.peonCap(view),
       armyCount: this.armySlotsUsed(view),
       armyCap: this.armyCap(view),
+      armyCost: this.armyFieldCost(view),
+      foeArmyCost: this.armyFieldCost(other),
       idlePeonCount: s.villagers.filter(
         (v) => v.team === view && this.peonReadyForWork(v) && !this.predicted.has(v.id),
       ).length,
