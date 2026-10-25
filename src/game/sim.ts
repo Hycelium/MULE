@@ -4,13 +4,20 @@ import {
   ARCHER_VS_WARD,
   BARRICADE_HP,
   barricadeStrike,
+  BASE_ARMY_CAP,
   BASE_PEON_CAP,
+  BRIDGE_STATION_CAP,
   BUILD_COOLDOWN,
   BUILD_COST,
   BUILD_DAMAGE,
   BUILD_HP,
   BUILD_PAUSE,
   BUILD_RANGE,
+  CHURCH_ARMY_POP,
+  CHURCH_AURA_DAMAGE,
+  CHURCH_AURA_RANGE,
+  CHURCH_AURA_REGEN,
+  CHURCH_UPGRADE_GOLD,
   CATAPULT_SPLASH_RADIUS,
   CATAPULT_VS_BARRICADE,
   CATAPULT_VS_PEON,
@@ -23,6 +30,7 @@ import {
   FOE_SIEGE_Y,
   HOUSE_POP,
   KEEP_THREAT_RADIUS,
+  MID_HOUSE_ARMY_POP,
   LEVY_VS_WARD_DAMAGE,
   MAX_PEON_QUEUE,
   MAX_TRAIN_QUEUE,
@@ -80,9 +88,12 @@ import {
 import {
   buildNodes,
   buildPads,
+  absoluteRiverLayer,
+  bridgeCrossing,
   defendLayerOptions,
   defendPointFor,
   generateMap,
+  riverLayers,
   getOrCreateCampaignMap,
   keepPos,
   laneName,
@@ -389,10 +400,47 @@ export class GameSim {
 
   private assignDefendRallies(team: Team, layer: DefendLayerId) {
     const seed = this.activeMap.seed;
-    for (const u of this.state.units) {
-      if (u.team !== team || u.hp <= 0 || !u.fromBarracks) continue;
-      if (this.isPlayerDriven(u)) continue;
-      u.rallyPoint = defendPointFor(seed, layer, u.lane, u.id, team);
+    const troops = this.state.units.filter(
+      (u) => u.team === team && u.hp > 0 && u.fromBarracks && !this.isPlayerDriven(u),
+    );
+    if (layer === "keep" || layer === "assault") {
+      for (const u of troops) {
+        u.rallyPoint = defendPointFor(seed, layer, u.lane, u.id, team);
+        u.engageFrom = undefined;
+        u.aiHeldForRush = false;
+        u.aiStagingPoint = undefined;
+      }
+      return;
+    }
+    const belt = absoluteRiverLayer(
+      layer === "home" || layer === "mid" || layer === "forward" ? layer : "mid",
+      team,
+    );
+    const band = riverLayers(seed).find((b) => b.id === belt);
+    const bridges = band
+      ? mapLanes(seed).map((lane) => bridgeCrossing(seed, lane, band))
+      : [defendPointFor(seed, layer, 0, 0, team)];
+    const load = bridges.map(() => 0);
+    for (const u of troops) {
+      let slot = Math.min(u.lane, bridges.length - 1);
+      if (load[slot]! >= BRIDGE_STATION_CAP) {
+        let best = -1;
+        let bestLoad = Infinity;
+        for (let i = 0; i < bridges.length; i++) {
+          if (load[i]! >= BRIDGE_STATION_CAP) continue;
+          if (load[i]! < bestLoad) {
+            bestLoad = load[i]!;
+            best = i;
+          }
+        }
+        slot = best >= 0 ? best : load.indexOf(Math.min(...load));
+      }
+      if (load[slot]! >= BRIDGE_STATION_CAP) {
+        u.rallyPoint = defendPointFor(seed, "keep", u.lane, u.id, team);
+      } else {
+        load[slot]! += 1;
+        u.rallyPoint = { ...bridges[slot]! };
+      }
       u.engageFrom = undefined;
       u.aiHeldForRush = false;
       u.aiStagingPoint = undefined;
@@ -402,6 +450,11 @@ export class GameSim {
   private defendDest(u: Unit): Vec2 | null {
     const layer = this.state.defendLayer[u.team];
     if (!layer || !u.fromBarracks) return null;
+    if (layer === "keep" || layer === "assault") {
+      return defendPointFor(this.activeMap.seed, layer, u.lane, u.id, u.team);
+    }
+    // Stick with the balanced rally already assigned; fall back if missing.
+    if (u.rallyPoint) return u.rallyPoint;
     return defendPointFor(this.activeMap.seed, layer, u.lane, u.id, u.team);
   }
 
@@ -1316,7 +1369,7 @@ export class GameSim {
     if (this.orderSink && !this.applyingRemote) {
       if (selected.length === 0) {
         const barracks = this.state.buildings.find(
-          (b) => b.id === this.state.selectedBuildingId && b.team === team && b.kind === "barracks",
+          (b) => b.id === this.state.selectedBuildingId && b.team === team && this.isTrainHall(b.kind),
         );
         if (barracks) this.orderSink({ t: "rally", team, buildingId: barracks.id, x: world.x, y: world.y });
         return;
@@ -1339,7 +1392,7 @@ export class GameSim {
     }
     if (selected.length === 0) {
       const barracks = this.state.buildings.find(
-        (b) => b.id === this.state.selectedBuildingId && b.team === team && b.kind === "barracks",
+        (b) => b.id === this.state.selectedBuildingId && b.team === team && this.isTrainHall(b.kind),
       );
       if (barracks) this.setRally(team, barracks.id, world);
       return;
@@ -1424,12 +1477,12 @@ export class GameSim {
 
   private setRally(team: Team, buildingId: number, world: { x: number; y: number }) {
     const barracks = this.state.buildings.find(
-      (b) => b.id === buildingId && b.team === team && b.kind === "barracks",
+      (b) => b.id === buildingId && b.team === team && this.isTrainHall(b.kind),
     );
     if (!barracks) return;
     barracks.rallyPoint = { ...world };
     this.state.commandMarkers.push({ id: this.next(), kind: "rally", pos: { ...world }, life: 1.4 });
-    this.tell(team, "Barracks rally point set.");
+    this.tell(team, `${barracks.kind === "church" ? "Church" : "Barracks"} rally point set.`);
   }
 
   stopSelectedVillagers() {
@@ -1548,7 +1601,12 @@ export class GameSim {
   }
 
   peonCap(team: Team) {
-    const houses = this.state.buildings.filter((b) => b.team === team && b.kind === "house").length;
+    const houses = this.state.buildings.filter(
+      (b) =>
+        b.team === team &&
+        b.kind === "house" &&
+        this.state.pads.find((p) => p.id === b.padId)?.zone !== "midEco",
+    ).length;
     return BASE_PEON_CAP + houses * HOUSE_POP;
   }
 
@@ -1556,6 +1614,43 @@ export class GameSim {
     const alive = this.state.villagers.filter((v) => v.team === team).length;
     const queued = this.state.keeps[team].peonQueue.length;
     return alive + queued;
+  }
+
+  /** Keep grants 25; purple mid houses +5 each; churches +10 each. */
+  armyCap(team: Team) {
+    const midHouses = this.state.buildings.filter(
+      (b) => b.team === team && b.kind === "house" && this.state.pads.find((p) => p.id === b.padId)?.zone === "midEco",
+    ).length;
+    const churches = this.state.buildings.filter((b) => b.team === team && b.kind === "church").length;
+    return BASE_ARMY_CAP + midHouses * MID_HOUSE_ARMY_POP + churches * CHURCH_ARMY_POP;
+  }
+
+  armySlotsUsed(team: Team) {
+    const alive = this.state.units.filter((u) => u.team === team && u.fromBarracks && u.hp > 0).length;
+    const queued = this.state.buildings
+      .filter((b) => b.team === team && (b.kind === "barracks" || b.kind === "church"))
+      .reduce((n, b) => n + b.queue.length, 0);
+    return alive + queued;
+  }
+
+  private isTrainHall(kind: BuildingKind) {
+    return kind === "barracks" || kind === "church";
+  }
+
+  private inChurchAura(u: Unit) {
+    for (const b of this.state.buildings) {
+      if (b.team !== u.team || b.kind !== "church" || b.hp <= 0) continue;
+      if (dist(u.pos, b.pos) <= CHURCH_AURA_RANGE) return true;
+    }
+    return false;
+  }
+
+  private tickChurchAuras(dt: number) {
+    for (const u of this.state.units) {
+      if (u.hp <= 0 || !u.fromBarracks) continue;
+      if (!this.inChurchAura(u)) continue;
+      u.hp = Math.min(u.maxHp, u.hp + CHURCH_AURA_REGEN * dt);
+    }
   }
 
   canAfford(team: Team, cost: ResCost) {
@@ -2061,12 +2156,12 @@ export class GameSim {
       this.tell(team, "Pad occupied — tap the building to manage it.");
       return;
     }
-    if (pad.zone === "eco" && kind !== "house") {
-      this.tell(team, "Eco pads behind the keep are for Houses only.");
+    if ((pad.zone === "eco" || pad.zone === "midEco") && kind !== "house") {
+      this.tell(team, pad.zone === "midEco" ? "Purple field pads are for Houses only." : "Eco pads behind the keep are for Houses only.");
       return;
     }
     if (pad.zone === "combat" && kind === "house") {
-      this.tell(team, "Houses go on eco pads behind your keep.");
+      this.tell(team, "Houses go on eco pads (green yard or purple field).");
       return;
     }
     const cost = BUILD_COST[kind];
@@ -2112,7 +2207,7 @@ export class GameSim {
   private upgradeBuilding(team: Team, buildingId: number, kind: "damage" | "rate") {
     const s = this.state;
     const b = s.buildings.find((x) => x.id === buildingId && x.team === team);
-    if (!b || b.kind === "house") return;
+    if (!b || b.kind === "house" || b.kind === "church") return;
     const rank = kind === "damage" ? b.damageRank : b.rateRank;
     if (rank >= 2) return;
     const cost = UPGRADE_COST[rank];
@@ -2126,6 +2221,33 @@ export class GameSim {
     else b.rateRank = (rank + 1) as 1 | 2;
     if (b.kind === "ballista" && kind === "rate") this.tell(team, `Guard dogs rank ${rank + 2} posted.`);
     else this.tell(team, `${kind} rank ${rank + 2} bought.`);
+  }
+
+  /** Turn a barracks into a church for 500 gold — +10 army pop and a blessing aura. */
+  consecrateSelected() {
+    const id = this.state.selectedBuildingId;
+    if (id == null) return;
+    if (this.redirect({ t: "church", team: this.localTeam, buildingId: id })) return;
+    this.consecrateBarracks(this.localTeam, id);
+  }
+
+  private consecrateBarracks(team: Team, buildingId: number) {
+    const s = this.state;
+    const b = s.buildings.find((x) => x.id === buildingId && x.team === team && x.kind === "barracks");
+    if (!b) {
+      this.tell(team, "Select a barracks to consecrate.");
+      return;
+    }
+    if (s.gold[team] < CHURCH_UPGRADE_GOLD) {
+      this.tell(team, `Need ${CHURCH_UPGRADE_GOLD}g to raise a church.`);
+      return;
+    }
+    s.gold[team] -= CHURCH_UPGRADE_GOLD;
+    b.spent += CHURCH_UPGRADE_GOLD;
+    b.kind = "church";
+    b.maxHp = BUILD_HP.church;
+    b.hp = Math.min(b.maxHp, b.hp + 16);
+    this.tell(team, "Church consecrated — +10 army pop, blessing aura.");
   }
 
   razeSelected() {
@@ -2610,7 +2732,7 @@ export class GameSim {
       return this.enqueueTrainAt(team, kind, id);
     }
     const barracks = this.state.buildings
-      .filter((x) => x.kind === "barracks" && x.team === "foe")
+      .filter((x) => this.isTrainHall(x.kind) && x.team === "foe")
       .sort((a, c) => a.queue.length - c.queue.length)[0];
     if (!barracks) return false;
     return this.enqueueTrainAt("foe", kind, barracks.id);
@@ -2618,13 +2740,17 @@ export class GameSim {
 
   private enqueueTrainAt(team: Team, kind: TrainKind, buildingId: number) {
     const s = this.state;
-    const b = s.buildings.find((x) => x.id === buildingId && x.kind === "barracks" && x.team === team);
+    const b = s.buildings.find((x) => x.id === buildingId && this.isTrainHall(x.kind) && x.team === team);
     if (!b) {
       this.tell(team, "Select a barracks first.");
       return false;
     }
     if (b.queue.length >= MAX_TRAIN_QUEUE) {
       this.tell(team, "Training queue is full.");
+      return false;
+    }
+    if (this.armySlotsUsed(team) >= this.armyCap(team)) {
+      this.tell(team, `Army cap ${this.armyCap(team)} — raise midfield houses or a church.`);
       return false;
     }
     if ((this.matchMode === "pvp" || team === this.localTeam) && !unitUnlocked(kind, s.keepLevel, this.campaignMission == null)) {
@@ -2653,7 +2779,7 @@ export class GameSim {
 
   private cancelTrainAt(team: Team, buildingId: number, index: number) {
     const s = this.state;
-    const b = s.buildings.find((x) => x.id === buildingId && x.kind === "barracks" && x.team === team);
+    const b = s.buildings.find((x) => x.id === buildingId && this.isTrainHall(x.kind) && x.team === team);
     if (!b || index < 0 || index >= b.queue.length) return;
     const job = b.queue[index];
     const def = UNIT_DEFS[job.kind];
@@ -2835,7 +2961,7 @@ export class GameSim {
   }
 
   private doBarracks(dt: number, team: Team) {
-    const bars = this.state.buildings.filter((b) => b.team === team && b.kind === "barracks");
+    const bars = this.state.buildings.filter((b) => b.team === team && this.isTrainHall(b.kind));
     for (const b of bars) {
       if (b.queue.length === 0) continue;
       const job = b.queue[0];
@@ -3054,6 +3180,7 @@ export class GameSim {
       dealt *= RUNNER_CHARGE_DAMAGE;
       attacker.chargeReady = false;
     }
+    if (this.inChurchAura(attacker)) dealt *= CHURCH_AURA_DAMAGE;
     return dealt;
   }
 
@@ -3063,6 +3190,7 @@ export class GameSim {
     let dealt = attacker.damage;
     if ("kind" in target && target.kind === "ward") dealt *= ARCHER_VS_WARD;
     if ("kind" in target && target.kind === "trebuchet") dealt *= ARCHER_VS_TREBUCHET;
+    if (this.inChurchAura(attacker)) dealt *= CHURCH_AURA_DAMAGE;
     return dealt;
   }
 
@@ -3863,6 +3991,7 @@ export class GameSim {
     this.doKeepCombat(dt, "foe");
     this.doBarracks(dt, "you");
     this.doBarracks(dt, "foe");
+    this.tickChurchAuras(dt);
     this.tickPeonQueues(dt);
     this.updateUnitMovementAndMelee(dt, "you");
     this.updateUnitMovementAndMelee(dt, "foe");
@@ -3938,15 +4067,20 @@ export class GameSim {
     if (this.state.wood[team] < cost.wood) return false;
     const pads = this.getPads(team);
     const occ = new Set(this.getBuildings(team).map((b) => b.padId));
-    const wantZone = kind === "house" ? "eco" : "combat";
+    const houseZones = new Set(["eco", "midEco"]);
     const laneDefense = this.laneDefense(team, 0);
     // A pad is worth its weakest covered road; multi-road pads get a small nudge.
     const padNeed = (pad: Pad) =>
-      Math.min(...pad.laneCoverage.map((lane) => laneDefense[lane])) - (pad.laneCoverage.length > 1 ? 0.25 : 0);
+      Math.min(...pad.laneCoverage.map((lane) => laneDefense[lane] ?? 0)) - (pad.laneCoverage.length > 1 ? 0.25 : 0);
     const target = pads
-      .filter((p) => !occ.has(p.id) && p.zone === wantZone)
+      .filter((p) => !occ.has(p.id) && (kind === "house" ? houseZones.has(p.zone) : p.zone === "combat"))
       .sort((a, b) => {
-        if (kind === "house") return a.pos.y - b.pos.y;
+        if (kind === "house") {
+          // Prefer purple midfield houses for army pop, then yard eco.
+          const az = a.zone === "midEco" ? 0 : 1;
+          const bz = b.zone === "midEco" ? 0 : 1;
+          return az - bz || a.pos.y - b.pos.y;
+        }
         return padNeed(a) - padNeed(b) || a.pos.y - b.pos.y;
       })[0];
     if (!target) return false;
@@ -4355,6 +4489,9 @@ export class GameSim {
           break;
         case "raze":
           this.razeBuilding(team, order.buildingId);
+          break;
+        case "church":
+          this.consecrateBarracks(team, order.buildingId);
           break;
         case "cancel":
           this.cancelTrainAt(team, order.buildingId, order.index);
@@ -4884,16 +5021,17 @@ export class GameSim {
     const selectedIsYours = !!selected && selected.team === view;
     const dmgCost = selected && selected.damageRank < 2 ? UPGRADE_COST[selected.damageRank] : 0;
     const rateCost = selected && selected.rateRank < 2 ? UPGRADE_COST[selected.rateRank] : 0;
+    const trainHall = selected && this.isTrainHall(selected.kind);
     const trainQueue =
-      selected?.kind === "barracks"
-        ? selected.queue.map((j) => ({
+      trainHall
+        ? selected!.queue.map((j) => ({
             kind: j.kind,
             label: UNIT_DEFS[j.kind].label,
             pct: 1 - j.timeLeft / Math.max(0.01, j.totalTime),
           }))
         : [];
     const trainOptions =
-      selected?.kind === "barracks" && selectedIsYours
+      trainHall && selectedIsYours
         ? TRAIN_ORDER.map((kind) => {
             const def = UNIT_DEFS[kind];
             return {
@@ -4916,7 +5054,8 @@ export class GameSim {
           pct: 1 - j.timeLeft / Math.max(0.01, j.totalTime),
         }))
       : [];
-    const canUpgradeStructure = !!selected && selectedIsYours && selected.kind !== "house";
+    const canUpgradeStructure =
+      !!selected && selectedIsYours && selected.kind !== "house" && selected.kind !== "church";
 
     const brain = foeBrainStats();
     const body = s.possessedId != null ? s.units.find((u) => u.id === s.possessedId && u.hp > 0) : undefined;
@@ -4971,6 +5110,8 @@ export class GameSim {
       selectedCanUpgradeDamage: canUpgradeStructure && selected!.damageRank < 2,
       selectedCanUpgradeRate: canUpgradeStructure && selected!.rateRank < 2,
       selectedCanRaze: !!selected && selectedIsYours,
+      selectedCanConsecrate:
+        !!selected && selectedIsYours && selected.kind === "barracks" && s.gold[view] >= CHURCH_UPGRADE_GOLD,
       selectedRazeRefund: selected && selectedIsYours ? (selected.canRefund ? Math.floor(selected.spent * 0.5) : 0) : 0,
       selectedRazeRefundWood:
         selected && selectedIsYours ? (selected.canRefund ? Math.floor(selected.spentWood * 0.5) : 0) : 0,
@@ -4981,6 +5122,8 @@ export class GameSim {
       peonQueue,
       peonCount: s.villagers.filter((v) => v.team === view).length,
       peonCap: this.peonCap(view),
+      armyCount: this.armySlotsUsed(view),
+      armyCap: this.armyCap(view),
       idlePeonCount: s.villagers.filter(
         (v) => v.team === view && this.peonReadyForWork(v) && !this.predicted.has(v.id),
       ).length,
@@ -5063,6 +5206,7 @@ export function buildingName(kind: BuildingKind) {
   if (kind === "ballista") return "Ballista";
   if (kind === "catapult") return "Catapult";
   if (kind === "house") return "House";
+  if (kind === "church") return "Church";
   if (kind === "barricade") return "Barricade";
   return "Barracks";
 }

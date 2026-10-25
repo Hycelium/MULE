@@ -15,7 +15,7 @@ const builds: { kind: BuildingKind; label: string; blurb: string }[] = [
   { kind: "ballista", label: "Ballista", blurb: "Armor-piercing · upgrade dogs vs spies" },
   { kind: "catapult", label: "Catapult", blurb: "Splash at the gate · breaks barricades" },
   { kind: "barracks", label: "Barracks", blurb: "Trains the counter army" },
-  { kind: "house", label: "House", blurb: "+3 peon pop · eco pad" },
+  { kind: "house", label: "House", blurb: "+3 peon / +5 army on purple" },
   { kind: "barricade", label: "Barricade", blurb: "Holds the road · rams crush it" },
 ];
 
@@ -27,7 +27,7 @@ export function BuildBar({ ui, compact = false, getCost, onSelect, onCancel }: B
           <span>
             Place <strong>{ui.buildSelection}</strong>
             {ui.buildSelection === "house"
-              ? " on a green eco pad behind your keep"
+              ? " on a green yard pad or purple midfield pad"
               : ui.buildSelection === "barricade"
                 ? " directly across either road"
                 : " on a glowing combat pad"}

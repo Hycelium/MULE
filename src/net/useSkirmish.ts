@@ -13,6 +13,7 @@ import {
   type NetMsg,
   type RosterSeat,
 } from "./protocol";
+import { emoteById, pushChatLine, sanitizeChatText, type ChatLine } from "./chat";
 import { RELAY_STATUS } from "./ice";
 import { ROOM_OPEN_STATUS, SkirmishLink } from "./skirmish";
 
@@ -101,6 +102,7 @@ function bothTeamsSeated(players: RosterSeat[]) {
 export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | null>) {
   const [name, setNameState] = useState(loadName);
   const [lobby, setLobby] = useState<LobbyState>(idleLobby);
+  const [chatLines, setChatLines] = useState<ChatLine[]>([]);
   const nameRef = useRef(name);
   nameRef.current = name;
   const roleRef = useRef<"solo" | "host" | "guest">("solo");
@@ -112,6 +114,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
   const guestPlayerIdRef = useRef(loadPlayerId());
   /** Host maps PeerJS peer id → stable player id. */
   const peerMapRef = useRef(new Map<string, string>());
+  const chatIdRef = useRef(1);
 
   const setName = useCallback((value: string) => {
     const next = value.slice(0, 24);
@@ -149,6 +152,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     sim.setLocalPlayerId(HOST_PLAYER_ID);
     sim.reset();
     rendererRef.current?.setHomeSide("you");
+    setChatLines([]);
     setLobby(idleLobby());
     const url = new URL(window.location.href);
     if (url.searchParams.has("room")) {
@@ -249,6 +253,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
         sim.setLocalTeam(msg.team);
         sim.setLocalPlayerId(msg.playerId);
         rendererRef.current?.setHomeSide(msg.team);
+        setChatLines([]);
         setLobby((s) => ({
           ...s,
           selectedMapId: msg.mapId,
@@ -273,12 +278,65 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
         else sim.pushToast(msg.text);
         return;
       }
+      if (msg.t === "chat") {
+        const text = sanitizeChatText(msg.text);
+        if (!text) return;
+        // Host relays guest chat to every peer.
+        if (roleRef.current === "host") linkRef.current?.send(msg);
+        if (msg.playerId === lobbyRef.current.localPlayerId) return;
+        const id = chatIdRef.current++;
+        setChatLines((lines) =>
+          pushChatLine(
+            lines,
+            {
+              playerId: msg.playerId,
+              name: msg.name.trim().slice(0, 24) || "Player",
+              team: msg.team,
+              text,
+              emote: msg.emote,
+              at: Date.now(),
+            },
+            id,
+          ),
+        );
+        return;
+      }
       if (msg.t === "pong") {
         const ms = Math.max(0, Date.now() - msg.at);
         setLobby((s) => ({ ...s, pingMs: ms }));
       }
     },
     [beginGuest, rendererRef, sim, warnPicture],
+  );
+
+  const sendChatPayload = useCallback((text: string, emote?: string) => {
+    const cleaned = sanitizeChatText(text);
+    if (!cleaned || !liveRef.current || lobbyRef.current.link !== "open") return;
+    const playerId = lobbyRef.current.localPlayerId;
+    const team = lobbyRef.current.localTeam;
+    const who = nameRef.current.trim().slice(0, 24) || "Player";
+    const msg: NetMsg = { t: "chat", playerId, name: who, team, text: cleaned, emote };
+    const id = chatIdRef.current++;
+    setChatLines((lines) =>
+      pushChatLine(lines, { playerId, name: who, team, text: cleaned, emote, at: Date.now() }, id),
+    );
+    linkRef.current?.send(msg);
+  }, []);
+
+  const sendChat = useCallback(
+    (text: string) => {
+      sendChatPayload(text);
+    },
+    [sendChatPayload],
+  );
+
+  const sendEmote = useCallback(
+    (emoteId: string) => {
+      const emote = emoteById(emoteId);
+      if (!emote) return;
+      sendChatPayload(emote.text, emote.id);
+    },
+    [sendChatPayload],
   );
 
   const openLink = useCallback(
@@ -445,6 +503,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     if (!sim.applyRematch(mapId)) return;
     const players = lobbyRef.current.players;
     sim.setPvpRoster(players);
+    setChatLines([]);
     for (const [peerId, playerId] of peerMapRef.current) {
       const seat = players.find((p) => p.id === playerId);
       if (!seat) continue;
@@ -484,6 +543,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     linkRef.current?.send({ t: "snap", snap: sim.exportSnapshot() });
     liveRef.current = true;
     rendererRef.current?.setHomeSide("you");
+    setChatLines([]);
     setLobby((s) => ({ ...s, open: false, live: true, link: "open", status: "", localTeam: "you" }));
   }, [rendererRef, sim]);
 
@@ -563,6 +623,9 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     name,
     setName,
     lobby,
+    chatLines,
+    sendChat,
+    sendEmote,
     roleRef,
     liveRef,
     linkRef,

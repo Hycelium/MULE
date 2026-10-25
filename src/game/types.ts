@@ -3,9 +3,10 @@ export type WaveUnitKind = "raider" | "soldier" | "brute" | "runner" | "ward";
 export type TrainKind = "levy" | "runner" | "archer" | "ward" | "rammer" | "trebuchet" | "spy";
 export type SiegePhase = "packed" | "unpacking" | "ready" | "packing";
 export type UnitKind = WaveUnitKind | TrainKind;
-export type BuildingKind = "watchtower" | "ballista" | "catapult" | "barracks" | "house" | "barricade";
+export type BuildingKind = "watchtower" | "ballista" | "catapult" | "barracks" | "church" | "house" | "barricade";
 export type ResourceKind = "pine" | "copper";
-export type PadZone = "combat" | "eco";
+/** eco = keep-yard houses; midEco = purple no-man's-land houses (army pop). */
+export type PadZone = "combat" | "eco" | "midEco";
 export type GamePhase = "title" | "running" | "ended";
 /** Procedural map id, e.g. `seed-1842291`. Infinite campaign maps. */
 export type MapId = string;
@@ -375,6 +376,7 @@ export interface UiSnapshot {
   selectedCanUpgradeDamage: boolean;
   selectedCanUpgradeRate: boolean;
   selectedCanRaze: boolean;
+  selectedCanConsecrate: boolean;
   selectedRazeRefund: number;
   selectedRazeRefundWood: number;
   selectedTrainPct: number | null;
@@ -384,6 +386,8 @@ export interface UiSnapshot {
   peonQueue: QueueSlotUi[];
   peonCount: number;
   peonCap: number;
+  armyCount: number;
+  armyCap: number;
   /** Peons standing idle or walking home with no job. */
   idlePeonCount: number;
   keepGarrisoned: number;
