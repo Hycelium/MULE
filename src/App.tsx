@@ -1079,6 +1079,29 @@ export default function App() {
       });
     }
   }
+  if (ui.finalDuel?.canPropose) {
+    clusterActions.push({
+      id: "final-duel",
+      icon: "⚔",
+      label: "Final Duel",
+      hint: "Challenge the foe to a courtyard duel (runner, then ward). Match ends when a ward falls.",
+      onPress: () => {
+        sim.proposeFinalDuel();
+        setClusterOpen(false);
+        refreshUi();
+        beep(480);
+      },
+    });
+  } else if (ui.finalDuel?.phase === "proposed" && ui.finalDuel.proposedBy === ui.localTeam) {
+    clusterActions.push({
+      id: "final-duel-wait",
+      icon: "⚔",
+      label: "Duel pending…",
+      hint: "Waiting for the foe to accept or decline.",
+      disabled: true,
+      onPress: () => {},
+    });
+  }
   clusterActions.push({
     id: "reset-cam",
     icon: "⟲",
@@ -1249,11 +1272,6 @@ export default function App() {
                 sim.rushNextWave();
                 refreshUi();
                 beep(500);
-              }}
-              onProposeDuel={() => {
-                sim.proposeFinalDuel();
-                refreshUi();
-                beep(480);
               }}
             />
           );

@@ -11,10 +11,9 @@ interface HudProps {
   onSpeed: () => void;
   onSound: () => void;
   onRush: () => void;
-  onProposeDuel?: () => void;
 }
 
-export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound, onRush, onProposeDuel }: HudProps) {
+export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound, onRush }: HudProps) {
   const xpPct = ui.keepXpPct;
   const phaseLabel =
     ui.wavePhase === "build"
@@ -49,6 +48,14 @@ export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound
             <span className="label">ALIVE</span>
             <span className="value">{living}</span>
           </div>
+          {ui.finalDuel?.phase === "active" && (
+            <div className="stat">
+              <span className="label">DUEL</span>
+              <span className="phase-tag">
+                you {ui.finalDuel.youLife ?? "out"} · foe {ui.finalDuel.foeLife ?? "out"}
+              </span>
+            </div>
+          )}
           <div className="stat intellect">
             <span className="label">LADDER</span>
             <span className="phase-tag muted">
@@ -194,22 +201,6 @@ export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound
               Rush +18g
             </span>
           </button>
-        )}
-        {ui.finalDuel?.canPropose && onProposeDuel && (
-          <button type="button" className="rush-btn" onClick={onProposeDuel}>
-            <span className="full">Final Duel</span>
-            <span className="short" aria-hidden>
-              Duel
-            </span>
-          </button>
-        )}
-        {ui.finalDuel?.phase === "proposed" && ui.finalDuel.proposedBy === ui.localTeam && (
-          <span className="phase-tag muted">Duel pending…</span>
-        )}
-        {ui.finalDuel?.phase === "active" && (
-          <span className="phase-tag">
-            Duel · you {ui.finalDuel.youLife ?? "out"} · foe {ui.finalDuel.foeLife ?? "out"}
-          </span>
         )}
       </div>
     </div>
