@@ -2,8 +2,8 @@ export type Team = "you" | "foe";
 export type WaveUnitKind = "raider" | "soldier" | "brute" | "runner" | "ward";
 export type TrainKind = "levy" | "runner" | "archer" | "ward" | "rammer" | "trebuchet" | "spy";
 export type SiegePhase = "packed" | "unpacking" | "ready" | "packing";
-/** Church-only knight; not train-queueable from barracks. */
-export type UnitKind = WaveUnitKind | TrainKind | "templar";
+/** Church-only knight; not train-queueable from barracks. Arena starter uses peon. */
+export type UnitKind = WaveUnitKind | TrainKind | "templar" | "peon";
 export type BuildingKind = "watchtower" | "ballista" | "catapult" | "barracks" | "church" | "house" | "barricade";
 export type ResourceKind = "pine" | "copper";
 /** eco = keep-yard houses; midEco = purple no-man's-land houses (army pop). */
@@ -73,6 +73,12 @@ export interface Unit {
   rallyCooldown?: number;
   /** Seconds of Rally haste remaining (attack 25% faster). */
   rallyBuffTimer?: number;
+  /** Arena gun-game ladder index (0 = peon … 4 = runner). */
+  arenaRung?: number;
+  /** Arena kills scored by this fighter. */
+  arenaKills?: number;
+  /** Last unit that damaged this body (arena kill credit). */
+  lastHitBy?: number;
 }
 
 /** First-person body the local player is driving, or none. */
@@ -338,6 +344,31 @@ export interface GameState {
   possessAimUnitId: number | null;
   /** Barracks troops concentrate on this river belt when set. */
   defendLayer: Record<Team, DefendLayerId | null>;
+  /** Local FFA gun-game practice; null outside arena mode. */
+  arena: ArenaMatchState | null;
+}
+
+export interface ArenaRespawn {
+  team: Team;
+  rung: number;
+  kills: number;
+  at: number;
+  isPlayer: boolean;
+}
+
+export interface ArenaMatchState {
+  playerUnitId: number | null;
+  respawns: ArenaRespawn[];
+}
+
+export interface ArenaStandingUi {
+  id: number;
+  label: string;
+  rung: number;
+  rungLabel: string;
+  kills: number;
+  you: boolean;
+  alive: boolean;
 }
 
 export interface QueueSlotUi {
@@ -453,6 +484,13 @@ export interface UiSnapshot {
   defendLayer: DefendLayerId | null;
   /** Bridge belts available on this map (1–3). */
   defendLayers: { id: DefendLayerId; label: string }[];
+  /** Local Arena gun-game practice. */
+  arena: boolean;
+  arenaRung: number;
+  arenaRungMax: number;
+  arenaRungLabel: string;
+  arenaKills: number;
+  arenaStandings: ArenaStandingUi[];
 }
 
 export interface RectHit {

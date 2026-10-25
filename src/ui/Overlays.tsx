@@ -55,6 +55,7 @@ interface OverlaysProps {
   hideTitle?: boolean;
   skirmishLive?: boolean;
   onStart: () => void;
+  onArena: () => void;
   onSkirmish: () => void;
   onCampaign: () => void;
   onRestart: () => void;
@@ -68,6 +69,7 @@ export function Overlays({
   hideTitle,
   skirmishLive,
   onStart,
+  onArena,
   onSkirmish,
   onCampaign,
   onRestart,
@@ -160,6 +162,9 @@ export function Overlays({
                 <button type="button" className="ghost" onClick={() => setArcadeOpen(true)}>
                   Arcade mode
                 </button>
+                <button type="button" className="ghost" onClick={onArena}>
+                  Arena
+                </button>
                 <button type="button" className="ghost" onClick={onSkirmish}>
                   Multiplayer
                 </button>
@@ -192,7 +197,24 @@ export function Overlays({
         </div>
       )}
 
-      {ui.phase === "ended" && !skirmishLive && (
+      {ui.phase === "ended" && !skirmishLive && ui.arena && (
+        <div className="overlay">
+          <h2>{ui.endReason}</h2>
+          <p>
+            Kills: {ui.arenaKills} · Final rung: {ui.arenaRungLabel}
+          </p>
+          <div className="title-actions">
+            <button type="button" className="cta" onClick={onArena}>
+              Play again
+            </button>
+            <button type="button" className="ghost" onClick={onRestart}>
+              Return
+            </button>
+          </div>
+        </div>
+      )}
+
+      {ui.phase === "ended" && !skirmishLive && !ui.arena && (
         <div className="overlay">
           <h2>{ui.endReason}</h2>
           <p>Slain: {ui.stats.slain}</p>

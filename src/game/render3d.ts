@@ -15,6 +15,7 @@ import {
   WORLD_H,
   WORLD_W,
 } from "./balance";
+import { ARENA_HALF, arenaCameraFrame, buildArenaCourtyardModel } from "./arena";
 import { homeCameraFrame } from "./homeCamera";
 import { mapBounds } from "./map";
 import { cloneModel, ensureModelsLoaded, setSharedAnisotropy } from "./assets3d";
@@ -179,6 +180,8 @@ export class GameRenderer {
   private pinchCenter = { x: 0, y: 0 };
   private tmpV = new THREE.Vector3();
   private lastMapId = "";
+  /** Gun-game courtyard — frame the yard, hide keeps. */
+  private arenaView = false;
   private worldGroup = new THREE.Group();
   private torchLights: THREE.PointLight[] = [];
   private sun: THREE.DirectionalLight;
@@ -478,9 +481,11 @@ export class GameRenderer {
 
   /** Best default RTS framing — oblique, on the local keep's side of the map. */
   resetCamera() {
-    const frame = homeCameraFrame(this.homeSide);
+    const frame = this.arenaView ? arenaCameraFrame() : homeCameraFrame(this.homeSide);
     // Pull back a little on wide maps so the outer roads start in view.
-    this.camDist = frame.dist * Math.sqrt(Math.max(1, this.mapWidth / WORLD_W));
+    this.camDist = this.arenaView
+      ? frame.dist
+      : frame.dist * Math.sqrt(Math.max(1, this.mapWidth / WORLD_W));
     this.camYaw = frame.yaw;
     this.camPitch = frame.pitch;
     this.camLook.set(frame.lookX, frame.lookY, frame.lookZ);
@@ -1152,12 +1157,15 @@ export class GameRenderer {
   }
 
   private syncScene(state: GameState, step = 0) {
-    if (state.mapId !== this.lastMapId) {
+    const arenaNow = !!state.arena;
+    if (state.mapId !== this.lastMapId || arenaNow !== this.arenaView) {
+      this.arenaView = arenaNow;
       this.rebuildBattlefield(state);
     }
     // FX before prune so deaths still have last-known sim coords
     this.syncCombatFx(state, step);
-    this.syncKeeps(state);
+    if (this.arenaView) this.syncArenaCourtyard(state);
+    else this.syncKeeps(state);
     this.syncBuildings(state);
     this.syncPads(state);
     this.syncNodes(state);
@@ -1289,6 +1297,23 @@ export class GameRenderer {
       else obj.scale.setScalar(1);
     }
     this.prune("keep-", live);
+    this.prune("arena-", this.liveSet());
+  }
+
+  private syncArenaCourtyard(_state: GameState) {
+    const live = this.liveSet();
+    const key = "arena-yard";
+    live.add(key);
+    const obj = this.ensure(key, () => {
+      const g = new THREE.Group();
+      g.add(buildArenaCourtyardModel("you"));
+      return g;
+    });
+    setPos3(obj, WORLD_W / 2, WORLD_H / 2, 0);
+    // Model curtain is ARENA_COURTYARD_W; scale so walls match 2×ARENA_HALF sim span.
+    obj.scale.setScalar((ARENA_HALF * 2) / 92);
+    this.prune("arena-", live);
+    this.prune("keep-", this.liveSet());
   }
 
   private makeBuilding(kind: Building["kind"], team: Team) {
@@ -1647,11 +1672,21 @@ export class GameRenderer {
     for (const u of state.units) {
       const key = `unit-${u.id}`;
       live.add(key);
-      const obj = this.ensure(key, () => {
-        const made = this.makeUnit(u);
-        made.userData.ramBody = made.children.find((child) => child.userData.movingRamBody) ?? null;
-        return made;
-      });
+      let obj = this.entityMap.get(key);
+      if (obj && obj.userData.unitKind !== u.kind) {
+        this.dynamicRoot.remove(obj);
+        this.clearAnimation(key);
+        this.entityMap.delete(key);
+        obj = undefined;
+      }
+      if (!obj) {
+        obj = this.ensure(key, () => {
+          const made = this.makeUnit(u);
+          made.userData.unitKind = u.kind;
+          made.userData.ramBody = made.children.find((child) => child.userData.movingRamBody) ?? null;
+          return made;
+        });
+      }
       setPos3(obj, u.pos.x, u.pos.y, 0);
       obj.visible = true;
       const possessed = state.possessedId === u.id;

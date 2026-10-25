@@ -100,6 +100,12 @@ const defaultUi: UiSnapshot = {
   possessed: null,
   defendLayer: null,
   defendLayers: [],
+  arena: false,
+  arenaRung: 0,
+  arenaRungMax: 5,
+  arenaRungLabel: "Peon",
+  arenaKills: 0,
+  arenaStandings: [],
 };
 
 const LONG_PRESS_MS = 350;
@@ -756,6 +762,7 @@ export default function App() {
       }
       if (possessed && ev.key === "Escape") {
         ev.preventDefault();
+        if (sim.getMatchMode() === "arena") return;
         sim.releasePossess("esc");
         document.exitPointerLock();
         refreshUi();
@@ -1207,7 +1214,7 @@ export default function App() {
 
         <div className={sheetOpen ? "stage sheet-open" : "stage"} ref={stageRef}>
           <canvas ref={canvasRef} className={ui.possessed ? "battlefield possessed" : "battlefield"} />
-          {ui.phase === "running" && <KeepTugBar ui={ui} />}
+          {ui.phase === "running" && !ui.arena && <KeepTugBar ui={ui} />}
           {ui.possessed && (
             <div className={`fps-hud${ui.possessed.kind === "trebuchet" ? " treb-hud" : ""}`}>
               <span className="fps-crosshair" aria-hidden />
@@ -1275,6 +1282,7 @@ export default function App() {
                     rendererRef.current?.kickSwing();
                   }}
                   onLeave={() => {
+                    if (ui.arena) return;
                     lockWantedRef.current = false;
                     sim.releasePossess("esc");
                     document.exitPointerLock();
@@ -1300,7 +1308,7 @@ export default function App() {
               {m.label && <em>{m.label}</em>}
             </span>
           ))}
-          {ui.selectedPeonCount > 0 && ui.phase === "running" && !sheetOpen && (
+          {ui.selectedPeonCount > 0 && ui.phase === "running" && !ui.arena && !sheetOpen && (
             <div className="unit-command-bar" role="toolbar" aria-label="Peon orders">
               <strong>
                 {ui.selectedPeonCount} peon{ui.selectedPeonCount === 1 ? "" : "s"}
@@ -1374,7 +1382,7 @@ export default function App() {
               onDismiss={dismissRadial}
             />
           )}
-          {ui.phase === "running" && (
+          {ui.phase === "running" && !ui.arena && (
           <div className="banner-rail">
             {ui.idlePeonCount > 0 && (
               <button
@@ -1421,6 +1429,7 @@ export default function App() {
           )}
           <div className="sheet-dock">
             <div className="sheet-slot">
+            {!ui.arena && (
             <DetailSheet
             ui={ui}
             onClose={() => {
@@ -1474,6 +1483,7 @@ export default function App() {
               beep(260);
             }}
           />
+            )}
             </div>
           </div>
           <Overlays
@@ -1489,6 +1499,15 @@ export default function App() {
             onCampaign={() => {
               setTriumph(null);
               setCampaignOpen(true);
+            }}
+            onArena={() => {
+              if (skirmish.lobby.open || skirmish.lobby.live) return;
+              setCampaignOpen(false);
+              afterPortalBreak(() => {
+                sim.startArena();
+                refreshUi();
+                beep(520);
+              });
             }}
             onStart={() => {
               if (skirmish.lobby.open || skirmish.lobby.live) return;
@@ -1622,7 +1641,7 @@ export default function App() {
           )}
         </div>
 
-        {ui.phase === "running" && (
+        {ui.phase === "running" && !ui.arena && (
           <BuildBar
             ui={ui}
             compact={compactBuild}
