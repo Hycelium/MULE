@@ -4,7 +4,7 @@ import {
   ARCHER_VS_WARD,
   BARRICADE_HP,
   barricadeStrike,
-  BASE_ARMY_CAP,
+  baseArmyCap,
   BASE_PEON_CAP,
   BRIDGE_STATION_CAP,
   BUILD_COOLDOWN,
@@ -400,9 +400,12 @@ export class GameSim {
 
   private assignDefendRallies(team: Team, layer: DefendLayerId) {
     const seed = this.activeMap.seed;
-    const troops = this.state.units.filter(
-      (u) => u.team === team && u.hp > 0 && u.fromBarracks && !this.isPlayerDriven(u),
-    );
+    const lanes = mapLanes(seed);
+    const troops = this.state.units
+      .filter((u) => u.team === team && u.hp > 0 && u.fromBarracks && !this.isPlayerDriven(u))
+      .sort((a, b) => a.id - b.id);
+    // Spread barracks troops across roads so Commands don't pile everyone on one lane.
+    this.balanceTroopLanes(troops, lanes);
     if (layer === "keep" || layer === "assault") {
       for (const u of troops) {
         u.rallyPoint = defendPointFor(seed, layer, u.lane, u.id, team);
@@ -418,11 +421,11 @@ export class GameSim {
     );
     const band = riverLayers(seed).find((b) => b.id === belt);
     const bridges = band
-      ? mapLanes(seed).map((lane) => bridgeCrossing(seed, lane, band))
+      ? lanes.map((lane) => bridgeCrossing(seed, lane, band))
       : [defendPointFor(seed, layer, 0, 0, team)];
     const load = bridges.map(() => 0);
     for (const u of troops) {
-      let slot = Math.min(u.lane, bridges.length - 1);
+      let slot = Math.min(Math.max(0, lanes.indexOf(u.lane)), bridges.length - 1);
       if (load[slot]! >= BRIDGE_STATION_CAP) {
         let best = -1;
         let bestLoad = Infinity;
@@ -439,11 +442,32 @@ export class GameSim {
         u.rallyPoint = defendPointFor(seed, "keep", u.lane, u.id, team);
       } else {
         load[slot]! += 1;
+        const lane = lanes[Math.min(slot, lanes.length - 1)] ?? u.lane;
+        u.lane = lane;
         u.rallyPoint = { ...bridges[slot]! };
       }
       u.engageFrom = undefined;
       u.aiHeldForRush = false;
       u.aiStagingPoint = undefined;
+    }
+  }
+
+  /** Evenly retarget troop lanes (stable by unit id; soft-prefer current lane on ties). */
+  private balanceTroopLanes(troops: Unit[], lanes: Lane[]) {
+    if (lanes.length <= 1 || troops.length === 0) return;
+    const load = lanes.map(() => 0);
+    for (const u of troops) {
+      let best = 0;
+      let bestScore = Infinity;
+      for (let i = 0; i < lanes.length; i++) {
+        const score = load[i]! * 1000 + Math.abs(lanes[i]! - u.lane);
+        if (score < bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      }
+      u.lane = lanes[best]!;
+      load[best]! += 1;
     }
   }
 
@@ -1616,13 +1640,14 @@ export class GameSim {
     return alive + queued;
   }
 
-  /** Keep grants 25; purple mid houses +5 each; churches +10 each. */
+  /** Keep grants 15/20/25 by road count; purple mid houses +5 each; churches +10 each. */
   armyCap(team: Team) {
     const midHouses = this.state.buildings.filter(
       (b) => b.team === team && b.kind === "house" && this.state.pads.find((p) => p.id === b.padId)?.zone === "midEco",
     ).length;
     const churches = this.state.buildings.filter((b) => b.team === team && b.kind === "church").length;
-    return BASE_ARMY_CAP + midHouses * MID_HOUSE_ARMY_POP + churches * CHURCH_ARMY_POP;
+    const lanes = mapLanes(this.activeMap.seed).length as 1 | 2 | 3;
+    return baseArmyCap(lanes) + midHouses * MID_HOUSE_ARMY_POP + churches * CHURCH_ARMY_POP;
   }
 
   armySlotsUsed(team: Team) {
@@ -2964,11 +2989,16 @@ export class GameSim {
   }
 
   private pickLane(team: Team): Lane {
-    const laneCounts = [0, 0, 0];
+    const lanes = mapLanes(this.activeMap.seed);
+    const own = [0, 0, 0];
+    const enemy = [0, 0, 0];
     for (const u of this.state.units) {
-      if (u.team !== team && u.pos.y > ROAD_Y_MIN && u.pos.y < ROAD_Y_MAX) laneCounts[u.lane] += 1;
+      if (u.hp <= 0) continue;
+      if (u.team === team && u.fromBarracks) own[u.lane] += 1;
+      else if (u.team !== team && u.pos.y > ROAD_Y_MIN && u.pos.y < ROAD_Y_MAX) enemy[u.lane] += 1;
     }
-    return topLane(mapLanes(this.activeMap.seed), (lane) => laneCounts[lane]);
+    // Fill emptiest friendly lane first; break ties toward enemy pressure.
+    return topLane(lanes, (lane) => -own[lane] * 100 + enemy[lane]);
   }
 
   private doBarracks(dt: number, team: Team) {
@@ -2980,6 +3010,8 @@ export class GameSim {
       if (job.timeLeft > 0) continue;
       this.spawnUnit(team, job.kind, this.pickLane(team), true, b);
       b.queue.shift();
+      const layer = this.state.defendLayer[team];
+      if (layer) this.assignDefendRallies(team, layer);
     }
   }
 
