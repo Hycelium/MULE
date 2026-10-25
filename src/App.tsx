@@ -425,7 +425,14 @@ export default function App() {
       else if (hosting && document.hidden) sim.stepMatch(elapsed, true);
       else sim.update(Math.min(0.05, elapsed));
       const gameState = sim.getState();
-      if (!gameState.possessedId && document.pointerLockElement === canvas) document.exitPointerLock();
+      if (!gameState.possessedId && document.pointerLockElement === canvas) {
+        lockWantedRef.current = false;
+        document.exitPointerLock();
+      }
+      if (gameState.possessedId != null) {
+        const body = gameState.units.find((u) => u.id === gameState.possessedId);
+        renderer.ensurePossess(sim.getPossessYaw(), body?.kind === "trebuchet");
+      }
       const home = sim.getLocalTeam();
       if (renderer.getHomeSide() !== home) renderer.setHomeSide(home);
       renderer.draw(gameState);
@@ -843,6 +850,15 @@ export default function App() {
   }, [sim, refreshUi, setPatrol, toggleFullscreen, skirmish.liveRef]);
 
   useEffect(() => {
+    let fireHold = 0;
+    const clearFireHold = () => {
+      window.clearInterval(fireHold);
+      fireHold = 0;
+    };
+    const strikeOnce = () => {
+      sim.possessAttack();
+      rendererRef.current?.kickSwing();
+    };
     const onLook = (ev: MouseEvent) => {
       const canvas = canvasRef.current;
       if (document.pointerLockElement !== canvas) return;
@@ -853,26 +869,49 @@ export default function App() {
     };
     const onLockChange = () => {
       if (document.pointerLockElement === canvasRef.current) return;
+      clearFireHold();
+      // Arena stays in the body; Esc only drops the lock. Next click re-locks.
+      if (sim.getMatchMode() === "arena") {
+        lockWantedRef.current = true;
+        return;
+      }
+      if (!lockWantedRef.current) return;
+      lockWantedRef.current = false;
       if (sim.getState().possessedId == null) return;
       sim.releasePossess("esc");
       setUi(sim.getUiSnapshot());
     };
-    const onStrike = (ev: MouseEvent) => {
-      if (document.pointerLockElement !== canvasRef.current) return;
+    const onStrikeDown = (ev: MouseEvent) => {
       if (ev.button !== 0) return;
+      if (sim.getState().possessedId == null) return;
+      if (layoutRef.current.fpsTouch) return;
+      const canvas = canvasRef.current;
+      if (document.pointerLockElement !== canvas) {
+        // Click-to-look after Esc, or first lock if Arena started without gesture.
+        grabPointerLock();
+        return;
+      }
       ev.preventDefault();
-      sim.possessAttack();
-      rendererRef.current?.kickSwing();
+      strikeOnce();
+      clearFireHold();
+      fireHold = window.setInterval(strikeOnce, 160);
+    };
+    const onStrikeUp = (ev: MouseEvent) => {
+      if (ev.button !== 0) return;
+      clearFireHold();
     };
     document.addEventListener("mousemove", onLook);
     document.addEventListener("pointerlockchange", onLockChange);
-    document.addEventListener("mousedown", onStrike);
+    document.addEventListener("mousedown", onStrikeDown);
+    document.addEventListener("mouseup", onStrikeUp);
     return () => {
+      clearFireHold();
       document.removeEventListener("mousemove", onLook);
       document.removeEventListener("pointerlockchange", onLockChange);
-      document.removeEventListener("mousedown", onStrike);
+      document.removeEventListener("mousedown", onStrikeDown);
+      document.removeEventListener("mouseup", onStrikeUp);
     };
-  }, [sim]);
+  }, [sim, grabPointerLock]);
 
   // Contextual one-shot hints.
   useEffect(() => {
@@ -909,13 +948,20 @@ export default function App() {
     if (ui.selectedKeepTeam === ui.localTeam && prev.selectedKeepTeam !== ui.localTeam) {
       showHint("keep-panel", "Queue peons here. Build Houses on eco pads to raise the cap.");
     }
-    if (ui.possessed && !prev.possessed && layoutRef.current.fpsTouch) {
-      showHint(
-        "phone-fps",
-        "Left stick walks, drag right to look, Fire to strike. Kills pull you to third person; pinch or +/− to adjust.",
-      );
+    if (ui.possessed && !prev.possessed) {
+      const body = sim.getState().units.find((u) => u.id === ui.possessed!.id);
+      rendererRef.current?.enterPossess(sim.getPossessYaw(), body?.kind === "trebuchet");
+      if (layoutRef.current.fpsTouch) {
+        showHint(
+          "phone-fps",
+          "Left stick walks, drag right to look, hold Fire to strike. Kills pull you to third person; pinch or +/− to adjust.",
+        );
+      } else if (ui.arena) {
+        grabPointerLock();
+        showHint("arena-fps", "WASD move, mouse look, hold click to strike. Esc unlocks the cursor — click again to look.");
+      }
     }
-  }, [ui, showHint]);
+  }, [ui, showHint, sim, grabPointerLock]);
 
   const onSelectBuild = (kind: BuildingKind) => {
     sim.selectBuild(kind);
@@ -945,8 +991,11 @@ export default function App() {
       hint: ui.possessed ? "Leave the soldier (Esc)" : "Cancel selection (Esc)",
       onPress: () => {
         if (ui.possessed) {
-          sim.releasePossess("esc");
-          document.exitPointerLock();
+          if (ui.arena) document.exitPointerLock();
+          else {
+            sim.releasePossess("esc");
+            document.exitPointerLock();
+          }
         } else {
           sim.cancelSelection();
           setPatrol(false);
@@ -1505,6 +1554,12 @@ export default function App() {
               setCampaignOpen(false);
               afterPortalBreak(() => {
                 sim.startArena();
+                const bodyId = sim.getState().possessedId;
+                if (bodyId != null) {
+                  const body = sim.getState().units.find((u) => u.id === bodyId);
+                  rendererRef.current?.enterPossess(sim.getPossessYaw(), body?.kind === "trebuchet");
+                  grabPointerLock();
+                }
                 refreshUi();
                 beep(520);
               });

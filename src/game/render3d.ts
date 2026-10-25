@@ -537,6 +537,11 @@ export class GameRenderer {
     return this.fpsYaw;
   }
 
+  ensurePossess(yaw: number, siege = false) {
+    if (this.fpsLive) return;
+    this.enterPossess(yaw, siege);
+  }
+
   enterPossess(yaw: number, siege = false) {
     this.trebView = siege;
     this.fpsYaw = yaw;
