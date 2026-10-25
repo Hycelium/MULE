@@ -69,6 +69,10 @@ export interface Unit {
   /** Trebuchet only. Packed to roll; unpacked and ready to throw. */
   siegePhase?: SiegePhase;
   siegeTimer?: number;
+  /** Templar: seconds until Rally is ready again. */
+  rallyCooldown?: number;
+  /** Seconds of Rally haste remaining (attack 25% faster). */
+  rallyBuffTimer?: number;
 }
 
 /** First-person body the local player is driving, or none. */
@@ -85,6 +89,12 @@ export interface PossessedUi {
   charge: number;
   /** Building or barricade currently in the trebuchet sights. */
   aimLabel: string;
+  /** Templar Rally: show ability control. */
+  canRally?: boolean;
+  /** Templar Rally ready (cooldown finished). */
+  rallyReady?: boolean;
+  /** Seconds left on Templar Rally cooldown. */
+  rallyCooldown?: number;
 }
 
 export type WavePhase = "build" | "spawning" | "fighting";

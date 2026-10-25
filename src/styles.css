@@ -3677,6 +3677,34 @@ button,
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
 }
 
+.touch-ability {
+  position: absolute;
+  right: calc(118px + var(--sar));
+  bottom: calc(48px + var(--sab));
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 9;
+  background: radial-gradient(circle at 35% 30%, #d4b86a, #6a4a18 72%);
+  border: 3px solid rgba(255, 230, 170, 0.9);
+  color: #fff8e8;
+  font: 700 12px/1.1 Cinzel, Palatino, serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
+}
+
+.touch-ability.cooling {
+  opacity: 0.55;
+  filter: grayscale(0.35);
+}
+
+.touch-ability:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
 .touch-fire:active {
   transform: scale(0.94);
 }
@@ -3703,6 +3731,10 @@ button,
   bottom: calc(98px + var(--sab));
 }
 
+.stage:has(.keep-tug-stack) .touch-ability {
+  bottom: calc(110px + var(--sab));
+}
+
 .stage:has(.keep-tug-stack) .touch-stick:not(.live) {
   bottom: calc(104px + var(--sab));
 }
@@ -3722,6 +3754,13 @@ button,
   width: 76px;
   height: 76px;
   font-size: 12px;
+}
+
+.is-phone .touch-ability {
+  right: calc(96px + var(--sar));
+  width: 62px;
+  height: 62px;
+  font-size: 11px;
 }
 
 /* —— Match chat (skirmish) —— */
