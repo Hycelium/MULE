@@ -405,8 +405,20 @@ export class GameSim {
     const seed = this.activeMap.seed;
     const lanes = mapLanes(seed);
     const troops = this.state.units
-      .filter((u) => u.team === team && u.hp > 0 && u.fromBarracks && !this.isPlayerDriven(u))
+      .filter(
+        (u) =>
+          u.team === team &&
+          u.hp > 0 &&
+          u.fromBarracks &&
+          u.kind !== "trebuchet" &&
+          !this.isPlayerDriven(u),
+      )
       .sort((a, b) => a.id - b.id);
+    // Trebuchets ignore hold commands and keep rolling up the road.
+    for (const u of this.state.units) {
+      if (u.team !== team || u.kind !== "trebuchet" || this.isPlayerDriven(u)) continue;
+      u.rallyPoint = undefined;
+    }
     // Attack: clear hold rallies so barracks troops resume normal lane march / fight AI.
     if (layer === "assault") {
       for (const u of troops) {
@@ -486,7 +498,7 @@ export class GameSim {
 
   private defendDest(u: Unit): Vec2 | null {
     const layer = this.state.defendLayer[u.team];
-    if (!layer || !u.fromBarracks || layer === "assault") return null;
+    if (!layer || !u.fromBarracks || layer === "assault" || u.kind === "trebuchet") return null;
     if (layer === "keep") {
       return defendPointFor(this.activeMap.seed, layer, u.lane, u.id, u.team);
     }
@@ -1939,11 +1951,13 @@ export class GameSim {
       chargeReady: kind === "runner",
       ignoreEnemyCreeps: !fromBarracks,
       rallyPoint:
-        holdLayer && holdLayer !== "assault"
-          ? defendPointFor(this.activeMap.seed, holdLayer, lane, id, team)
-          : !holdLayer && barracks?.rallyPoint
-            ? { ...barracks.rallyPoint }
-            : undefined,
+        kind === "trebuchet"
+          ? undefined
+          : holdLayer && holdLayer !== "assault"
+            ? defendPointFor(this.activeMap.seed, holdLayer, lane, id, team)
+            : !holdLayer && barracks?.rallyPoint
+              ? { ...barracks.rallyPoint }
+              : undefined,
       aiHeldForRush,
       aiStagingPoint: aiHeldForRush
         ? {
