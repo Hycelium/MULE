@@ -401,6 +401,53 @@ export class GameRenderer {
     return obj.getObjectByName("head") ?? null;
   }
 
+  /**
+   * Turn a ground unit to face look / aim / recent motion.
+   * Prefer live motion when moving so meshes never stay stuck on team march yaw.
+   */
+  private applyGroundFacing(
+    obj: THREE.Object3D,
+    x: number,
+    y: number,
+    opts: {
+      possessed: boolean;
+      facingYaw?: number;
+      team: Team;
+      kind?: string;
+    },
+  ) {
+    const prev = obj.userData.simPos as { x: number; y: number } | undefined;
+    let movedYaw: number | undefined;
+    if (prev) {
+      const dx = x - prev.x;
+      const dy = y - prev.y;
+      if (dx * dx + dy * dy > 1e-6) {
+        movedYaw = Math.atan2(dx, dy);
+        obj.userData.faceYaw = movedYaw;
+      }
+    }
+    obj.userData.simPos = { x, y };
+
+    let yaw: number;
+    if (opts.possessed) {
+      yaw = Math.PI - this.fpsYaw;
+    } else if (opts.facingYaw != null && Number.isFinite(opts.facingYaw)) {
+      // Sim aim / steer wins (kite backs up while still facing the foe).
+      yaw = opts.facingYaw;
+    } else if (movedYaw != null) {
+      yaw = movedYaw;
+    } else if (typeof obj.userData.faceYaw === "number") {
+      yaw = obj.userData.faceYaw;
+    } else {
+      yaw = opts.team === "you" ? Math.PI : 0;
+    }
+    obj.rotation.set(0, yaw, 0);
+    if (opts.kind) {
+      const head = this.findUnitHead(obj, opts.kind);
+      if (head && !opts.possessed) head.visible = true;
+    }
+  }
+
   private applyTrebuchetCamera(body: Unit, shake: number) {
     const yaw = this.fpsYaw;
     const pitch = THREE.MathUtils.clamp(this.fpsPitch, -0.62, 0.18);
@@ -1696,30 +1743,6 @@ export class GameRenderer {
       obj.visible = true;
       const possessed = state.possessedId === u.id;
       this.syncPossessMark(obj, u, possessed);
-      if (possessed) {
-        obj.rotation.y = Math.PI - this.fpsYaw;
-      } else if (u.facingYaw != null && Number.isFinite(u.facingYaw)) {
-        obj.rotation.y = u.facingYaw;
-        const head = this.findUnitHead(obj, u.kind);
-        if (head) head.visible = true;
-      } else {
-        // Fall back: face along recent motion, else team march direction.
-        const prev = obj.userData.simPos as { x: number; y: number } | undefined;
-        if (prev) {
-          const dx = u.pos.x - prev.x;
-          const dy = u.pos.y - prev.y;
-          if (dx * dx + dy * dy > 0.08) obj.userData.faceYaw = Math.atan2(dx, dy);
-        }
-        obj.userData.simPos = { x: u.pos.x, y: u.pos.y };
-        obj.rotation.y =
-          typeof obj.userData.faceYaw === "number"
-            ? obj.userData.faceYaw
-            : u.team === "you"
-              ? Math.PI
-              : 0;
-        const head = this.findUnitHead(obj, u.kind);
-        if (head) head.visible = true;
-      }
       if (u.kind === "rammer") {
         const body = obj.userData.ramBody as THREE.Object3D | null;
         if (body) {
@@ -1738,6 +1761,13 @@ export class GameRenderer {
       } else {
         animateUnit(obj, state.time + u.id * 0.37, { x: u.pos.x, y: u.pos.y, timer: u.attackTimer });
       }
+      // Face after anim so root yaw is never overwritten by pose code.
+      this.applyGroundFacing(obj, u.pos.x, u.pos.y, {
+        possessed,
+        facingYaw: u.facingYaw,
+        team: u.team,
+        kind: u.kind,
+      });
     }
     this.prune("unit-", live);
   }
@@ -1774,18 +1804,11 @@ export class GameRenderer {
       name.scale.set(16, 4.2, 1);
       name.renderOrder = 6;
       name.center.set(0.5, 0);
-      const bar = new THREE.Sprite(
-        new THREE.SpriteMaterial({ transparent: true, depthTest: false }),
-      );
-      bar.position.y = 15.2;
-      bar.scale.set(10, 0.7, 1);
-      bar.renderOrder = 6;
-      bar.center.set(0.5, 1);
-      plate.add(ring, name, bar);
+      // HP / power live in the top FPS vitals strip — name + ring only here.
+      plate.add(ring, name);
       obj.add(plate);
       obj.userData.possessPlate = plate;
       obj.userData.possessName = name;
-      obj.userData.possessBar = bar;
       obj.userData.possessNameText = "";
     }
     plate.visible = true;
@@ -1797,9 +1820,8 @@ export class GameRenderer {
       obj.userData.possessNameText = label;
       this.paintNameSprite(name, label, color);
     }
-    const bar = obj.userData.possessBar as THREE.Sprite;
-    // HP / power live in the top FPS vitals strip — keep the world plate for name + ring only.
-    bar.visible = false;
+    const legacyBar = obj.userData.possessBar as THREE.Sprite | undefined;
+    if (legacyBar) legacyBar.visible = false;
   }
 
   private possessScreenName(u: Unit) {
@@ -1870,7 +1892,6 @@ export class GameRenderer {
         return g;
       });
       setPos3(obj, v.pos.x, v.pos.y, 0);
-      obj.rotation.y = v.team === "you" ? Math.PI : 0;
       obj.scale.setScalar(v.state === "defend" ? 1.08 : 1);
       let selection = obj.userData.selection as THREE.Mesh | null;
       if (!selection) {
@@ -1900,6 +1921,11 @@ export class GameRenderer {
         timer: v.attackTimer,
         fighting: v.state === "defend" && v.attackTimer > -0.35,
         work: v.state === "gathering" || v.state === "buildingBarricade",
+      });
+      this.applyGroundFacing(obj, v.pos.x, v.pos.y, {
+        possessed: false,
+        facingYaw: v.facingYaw,
+        team: v.team,
       });
     }
     this.prune("vil-", live);

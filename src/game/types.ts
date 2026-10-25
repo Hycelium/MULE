@@ -203,6 +203,8 @@ export interface Villager {
   carryingGold: number;
   carryingWood: number;
   attackTimer: number;
+  /** Mesh yaw (Three.js Y): faces movement / fight target. */
+  facingYaw?: number;
 }
 
 export interface FloatingText {

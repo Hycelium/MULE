@@ -97,6 +97,7 @@ export interface SnapVillager {
   toB?: boolean;
   forced?: boolean;
   attackTimer: number;
+  facingYaw?: number;
 }
 
 export interface SnapBuilding {

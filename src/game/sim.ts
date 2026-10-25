@@ -178,12 +178,21 @@ function topLane(lanes: Lane[], score: (lane: Lane) => number): Lane {
   return lanes.reduce((best, lane) => (score(lane) > score(best) ? lane : best));
 }
 
-function moveTowards(p: { x: number; y: number }, target: { x: number; y: number }, speed: number, dt: number) {
-  const d = dist(p, target);
+function moveTowards(
+  p: { x: number; y: number },
+  target: { x: number; y: number },
+  speed: number,
+  dt: number,
+  face?: { facingYaw?: number },
+) {
+  const dx = target.x - p.x;
+  const dy = target.y - p.y;
+  const d = Math.hypot(dx, dy);
   if (d <= 0.001) return;
+  if (face) face.facingYaw = Math.atan2(dx, dy);
   const step = Math.min(d, speed * dt);
-  p.x += ((target.x - p.x) / d) * step;
-  p.y += ((target.y - p.y) / d) * step;
+  p.x += (dx / d) * step;
+  p.y += (dy / d) * step;
 }
 
 const KEEP_GARRISON_MAX = 5;
@@ -709,25 +718,25 @@ export class GameSim {
     for (const v of this.state.villagers) {
       if (v.team !== team || !this.predicted.has(v.id) || v.hp <= 0) continue;
       if (v.state === "moving" && v.moveTarget) {
-        moveTowards(v.pos, v.moveTarget, v.speed, dt);
+        moveTowards(v.pos, v.moveTarget, v.speed, dt, v);
         if (dist(v.pos, v.moveTarget) < 3) {
           v.moveTarget = undefined;
           v.state = "idle";
         }
       } else if (v.state === "patrolling" && v.patrolA && v.patrolB) {
         const destination = v.patrolToB ? v.patrolB : v.patrolA;
-        moveTowards(v.pos, destination, v.speed, dt);
+        moveTowards(v.pos, destination, v.speed, dt, v);
         if (dist(v.pos, destination) < 3) v.patrolToB = !v.patrolToB;
       } else if (v.state === "toNode" && v.targetNodeId) {
         const node = this.state.nodes.find((n) => n.id === v.targetNodeId);
-        if (node && dist(v.pos, node.pos) > 3) moveTowards(v.pos, node.pos, v.speed, dt);
+        if (node && dist(v.pos, node.pos) > 3) moveTowards(v.pos, node.pos, v.speed, dt, v);
       } else if (v.state === "home" || v.state === "toKeep") {
-        moveTowards(v.pos, keep.pos, v.speed, dt);
+        moveTowards(v.pos, keep.pos, v.speed, dt, v);
       } else if (v.state === "defend" && v.forcedAttack && v.targetEnemyId != null) {
         const enemy = this.state.units.find((u) => u.id === v.targetEnemyId && u.team !== team && u.hp > 0);
-        if (enemy && dist(v.pos, enemy.pos) > PEON_MELEE_RANGE) moveTowards(v.pos, enemy.pos, PEON_FIGHT_SPEED, dt);
+        if (enemy && dist(v.pos, enemy.pos) > PEON_MELEE_RANGE) moveTowards(v.pos, enemy.pos, PEON_FIGHT_SPEED, dt, v);
       } else if (v.state === "defend" && v.moveTarget && !v.forcedAttack) {
-        if (dist(v.pos, v.moveTarget) > 3) moveTowards(v.pos, v.moveTarget, v.speed, dt);
+        if (dist(v.pos, v.moveTarget) > 3) moveTowards(v.pos, v.moveTarget, v.speed, dt, v);
       }
     }
   }
@@ -2706,7 +2715,7 @@ export class GameSim {
   /** March along the road toward a destination (Y-first), unless a human is driving. */
   private marchSiegeOnRoad(u: Unit, team: Team, dest: { x: number; y: number }, dt: number) {
     if (this.isPlayerDriven(u)) {
-      moveTowards(u.pos, dest, u.speed, dt);
+      moveTowards(u.pos, dest, u.speed, dt, u);
       return;
     }
     const dy = dest.y - u.pos.y;
@@ -2715,7 +2724,7 @@ export class GameSim {
     } else {
       const roadX = lanePathX(this.activeMap.seed, team, u.lane, u.pos.y);
       const along = { x: roadX, y: dest.y };
-      moveTowards(u.pos, along, u.speed * 0.35, dt);
+      moveTowards(u.pos, along, u.speed * 0.35, dt, u);
     }
     this.pinSiegeToRoad(u, team, dt);
   }
@@ -2957,11 +2966,11 @@ export class GameSim {
   private stepSpy(u: Unit, team: Team, dt: number) {
     if (this.tryDogKill(u)) return;
     if (u.aiHeldForRush && u.aiStagingPoint) {
-      if (dist(u.pos, u.aiStagingPoint) > 4) moveTowards(u.pos, u.aiStagingPoint, u.speed, dt);
+      if (dist(u.pos, u.aiStagingPoint) > 4) moveTowards(u.pos, u.aiStagingPoint, u.speed, dt, u);
       return;
     }
     if (u.rallyPoint) {
-      moveTowards(u.pos, this.spyGoalAroundDogs(u, u.rallyPoint), u.speed, dt);
+      moveTowards(u.pos, this.spyGoalAroundDogs(u, u.rallyPoint), u.speed, dt, u);
       if (dist(u.pos, u.rallyPoint) < 5) u.rallyPoint = undefined;
       return;
     }
@@ -2972,7 +2981,7 @@ export class GameSim {
         if (u.attackTimer <= 0) this.spyWreckTrebuchet(u, engine);
         return;
       }
-      moveTowards(u.pos, this.spyGoalAroundDogs(u, engine.pos), u.speed, dt);
+      moveTowards(u.pos, this.spyGoalAroundDogs(u, engine.pos), u.speed, dt, u);
       return;
     }
     const gun = this.pickSpyGun(u);
@@ -2981,7 +2990,7 @@ export class GameSim {
         if (u.attackTimer <= 0) this.spySabotage(u, gun);
         return;
       }
-      moveTowards(u.pos, this.spyGoalAroundDogs(u, gun.pos), u.speed, dt);
+      moveTowards(u.pos, this.spyGoalAroundDogs(u, gun.pos), u.speed, dt, u);
       return;
     }
     const keep = this.teamKeep(this.enemy(team));
@@ -2989,7 +2998,7 @@ export class GameSim {
       if (u.attackTimer <= 0) this.spySapKeep(u);
       return;
     }
-    moveTowards(u.pos, this.spyGoalAroundDogs(u, keep.pos), u.speed, dt);
+    moveTowards(u.pos, this.spyGoalAroundDogs(u, keep.pos), u.speed, dt, u);
   }
 
   enqueueTrain(kind: TrainKind, team: Team = "you") {
@@ -3318,7 +3327,7 @@ export class GameSim {
         target = onRoute;
         v.targetEnemyId = onRoute.id;
       } else {
-        moveTowards(v.pos, anchor, v.speed, dt);
+        moveTowards(v.pos, anchor, v.speed, dt, v);
         return;
       }
     }
@@ -3334,7 +3343,7 @@ export class GameSim {
     }
     if (target) {
       if (dist(v.pos, target.pos) > PEON_MELEE_RANGE) {
-        moveTowards(v.pos, target.pos, PEON_FIGHT_SPEED, dt);
+        moveTowards(v.pos, target.pos, PEON_FIGHT_SPEED, dt, v);
       } else if (v.attackTimer <= 0) {
         target.hp -= v.damage;
         v.attackTimer = PEON_ATTACK_CD;
@@ -3344,7 +3353,7 @@ export class GameSim {
       return;
     }
     const destination = v.patrolToB ? v.patrolB : v.patrolA;
-    moveTowards(v.pos, destination, v.speed, dt);
+    moveTowards(v.pos, destination, v.speed, dt, v);
     if (dist(v.pos, destination) < 3) v.patrolToB = !v.patrolToB;
   }
 
@@ -3364,11 +3373,11 @@ export class GameSim {
     }
     v.targetEnemyId = target?.id;
     if (!target) {
-      if (dist(v.pos, guard) > 3) moveTowards(v.pos, guard, v.speed, dt);
+      if (dist(v.pos, guard) > 3) moveTowards(v.pos, guard, v.speed, dt, v);
       return true;
     }
     if (dist(v.pos, target.pos) > PEON_MELEE_RANGE) {
-      moveTowards(v.pos, target.pos, PEON_FIGHT_SPEED, dt);
+      moveTowards(v.pos, target.pos, PEON_FIGHT_SPEED, dt, v);
     } else if (v.attackTimer <= 0) {
       target.hp -= v.damage;
       v.attackTimer = PEON_ATTACK_CD;
@@ -3485,7 +3494,7 @@ export class GameSim {
     if (Math.hypot(aimX, aimY) > 0.01) u.facingYaw = Math.atan2(aimX, aimY);
     const contact = u.kind === "archer" ? ARCHER_RANGE : 18;
     if (dist(u.pos, target.pos) > contact) {
-      moveTowards(u.pos, target.pos, u.speed, dt);
+      moveTowards(u.pos, target.pos, u.speed, dt, u);
       return;
     }
     if (u.attackTimer > 0) return;
@@ -3642,25 +3651,25 @@ export class GameSim {
           continue;
         }
         if (u.engageFrom && dist(u.pos, u.engageFrom) > 4) {
-          moveTowards(u.pos, u.engageFrom, u.speed, dt);
+          moveTowards(u.pos, u.engageFrom, u.speed, dt, u);
           continue;
         }
         u.engageFrom = undefined;
         u.targetUnitId = undefined;
         if (u.aiHeldForRush && u.aiStagingPoint) {
           if (dist(u.pos, u.aiStagingPoint) > 4) {
-            moveTowards(u.pos, u.aiStagingPoint, u.speed, dt);
+            moveTowards(u.pos, u.aiStagingPoint, u.speed, dt, u);
           }
           continue;
         }
         if (u.rallyPoint) {
-          moveTowards(u.pos, u.rallyPoint, u.speed, dt);
+          moveTowards(u.pos, u.rallyPoint, u.speed, dt, u);
           if (dist(u.pos, u.rallyPoint) < 5) u.rallyPoint = undefined;
           continue;
         }
         const hold = this.defendDest(u);
         if (hold && dist(u.pos, hold) > 6) {
-          moveTowards(u.pos, hold, u.speed, dt);
+          moveTowards(u.pos, hold, u.speed, dt, u);
           continue;
         }
       }
@@ -4114,13 +4123,14 @@ export class GameSim {
       const aimY = target.pos.y - u.pos.y;
       if (Math.hypot(aimX, aimY) > 0.01) u.facingYaw = Math.atan2(aimX, aimY);
       if (gap > reach * 0.85) {
-        moveTowards(u.pos, target.pos, u.speed, dt);
+        moveTowards(u.pos, target.pos, u.speed, dt, u);
         clampToArena(u.pos);
       } else if (gap < reach * 0.45 && ranged) {
-        // kite slightly
+        // kite slightly — still face the foe while backing up
         const dx = u.pos.x - target.pos.x;
         const dy = u.pos.y - target.pos.y;
         const d = Math.hypot(dx, dy) || 1;
+        u.facingYaw = Math.atan2(target.pos.x - u.pos.x, target.pos.y - u.pos.y);
         u.pos.x += (dx / d) * u.speed * 0.7 * dt;
         u.pos.y += (dy / d) * u.speed * 0.7 * dt;
         clampToArena(u.pos);
@@ -4349,7 +4359,7 @@ export class GameSim {
         return;
       }
       if (v.state === "toGarrison") {
-        moveTowards(v.pos, keep.pos, v.speed, dt);
+        moveTowards(v.pos, keep.pos, v.speed, dt, v);
         if (dist(v.pos, keep.pos) < 8) {
           if (v.carryingGold > 0) {
             this.state.gold[team] += v.carryingGold;
@@ -4374,7 +4384,7 @@ export class GameSim {
           return;
         }
         if (v.state === "toBarricade") {
-          moveTowards(v.pos, site.pos, v.speed, dt);
+          moveTowards(v.pos, site.pos, v.speed, dt, v);
           if (dist(v.pos, site.pos) < 6) v.state = "buildingBarricade";
         } else {
           site.buildProgress = Math.min(site.buildTime, site.buildProgress + dt);
@@ -4392,7 +4402,7 @@ export class GameSim {
 
       if (v.state === "moving" && v.moveTarget) {
         if (this.peonRetaliate(v, team)) return;
-        moveTowards(v.pos, v.moveTarget, v.speed, dt);
+        moveTowards(v.pos, v.moveTarget, v.speed, dt, v);
         if (dist(v.pos, v.moveTarget) < 3) {
           v.moveTarget = undefined;
           v.state = "idle";
@@ -4424,12 +4434,15 @@ export class GameSim {
           return;
         }
         if (dist(v.pos, target.pos) > PEON_MELEE_RANGE) {
-          moveTowards(v.pos, target.pos, PEON_FIGHT_SPEED, dt);
-        } else if (v.attackTimer <= 0) {
-          // Barracks soldiers and wave creeps both take peon damage — no immunity.
-          target.hp -= v.damage;
-          v.attackTimer = PEON_ATTACK_CD;
-          this.addFloat(`-${this.strikeText(v.damage)}`, target.pos.x, target.pos.y - 8, "#c8e090");
+          moveTowards(v.pos, target.pos, PEON_FIGHT_SPEED, dt, v);
+        } else {
+          v.facingYaw = Math.atan2(target.pos.x - v.pos.x, target.pos.y - v.pos.y);
+          if (v.attackTimer <= 0) {
+            // Barracks soldiers and wave creeps both take peon damage — no immunity.
+            target.hp -= v.damage;
+            v.attackTimer = PEON_ATTACK_CD;
+            this.addFloat(`-${this.strikeText(v.damage)}`, target.pos.x, target.pos.y - 8, "#c8e090");
+          }
         }
         return;
       }
@@ -4445,10 +4458,10 @@ export class GameSim {
       }
       if (v.state === "toNode" && node) {
         if (node.loadsLeft <= 0) {
-          if (dist(v.pos, node.pos) > 4) moveTowards(v.pos, node.pos, v.speed, dt);
+          if (dist(v.pos, node.pos) > 4) moveTowards(v.pos, node.pos, v.speed, dt, v);
           return;
         }
-        moveTowards(v.pos, node.pos, v.speed, dt);
+        moveTowards(v.pos, node.pos, v.speed, dt, v);
         if (dist(v.pos, node.pos) < 3) {
           v.state = "gathering";
           v.timer = node.gatherTime;
@@ -4471,7 +4484,7 @@ export class GameSim {
           v.state = "toKeep";
         }
       } else if (v.state === "toKeep") {
-        moveTowards(v.pos, keep.pos, v.speed, dt);
+        moveTowards(v.pos, keep.pos, v.speed, dt, v);
         if (dist(v.pos, keep.pos) < 8) {
           if (v.carryingGold > 0) {
             this.state.gold[team] += v.carryingGold;
@@ -4498,7 +4511,7 @@ export class GameSim {
           else v.state = "idle";
         }
       } else if (v.state === "home") {
-        moveTowards(v.pos, keep.pos, v.speed, dt);
+        moveTowards(v.pos, keep.pos, v.speed, dt, v);
         if (dist(v.pos, keep.pos) < 6) v.state = "idle";
       }
     });
@@ -5277,6 +5290,7 @@ export class GameSim {
         toB: v.patrolToB,
         forced: v.forcedAttack,
         attackTimer: v.attackTimer,
+        facingYaw: v.facingYaw,
       })),
       buildings: s.buildings.map((b) => ({
         id: b.id,
@@ -5594,6 +5608,7 @@ export class GameSim {
       carryingGold: 0,
       carryingWood: 0,
       attackTimer: v.attackTimer,
+      facingYaw: v.facingYaw,
       });
     }
     // Keep guest "to work" peons on their node until the host picture catches up.
