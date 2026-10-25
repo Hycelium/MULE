@@ -1,3 +1,7 @@
+import type { RosterSeat } from "../net/protocol";
+import { MAX_SKIRMISH_PLAYERS } from "../net/protocol";
+import type { Team } from "../game/types";
+
 interface SkirmishEndProps {
   result: string;
   role: "host" | "guest" | "idle";
@@ -44,7 +48,7 @@ export function SkirmishEnd({
           ))}
         </div>
       ) : linkDown ? (
-        <p className="skirmish-end-down">Opponent disconnected.</p>
+        <p className="skirmish-end-down">Connection lost.</p>
       ) : (
         <p>Waiting for host</p>
       )}
@@ -55,7 +59,7 @@ export function SkirmishEnd({
           <span>{selected.tagline}</span>
         </p>
       )}
-      {role === "host" && linkDown && <p className="skirmish-end-down">Opponent disconnected.</p>}
+      {role === "host" && linkDown && <p className="skirmish-end-down">Connection lost.</p>}
       {role === "host" && (
         <button type="button" className="cta" onClick={onRematch} disabled={!canRematch}>
           Rematch
@@ -72,10 +76,9 @@ interface SkirmishLobbyProps {
   name: string;
   onName: (name: string) => void;
   role: "idle" | "host" | "guest";
-  hostName: string;
-  guestName: string;
-  hostConnected: boolean;
-  guestConnected: boolean;
+  players: RosterSeat[];
+  localPlayerId: string;
+  localTeam: Team;
   invite: string;
   joinDraft: string;
   onJoinDraft: (value: string) => void;
@@ -91,20 +94,39 @@ interface SkirmishLobbyProps {
   onLeave: () => void;
 }
 
-function slotStatus(connected: boolean, connecting: boolean) {
-  if (connected) return "Connected";
-  if (connecting) return "Connecting";
-  return "Waiting";
+function TeamColumn({
+  title,
+  seats,
+  localPlayerId,
+}: {
+  title: string;
+  seats: RosterSeat[];
+  localPlayerId: string;
+}) {
+  return (
+    <div className="lobby-team">
+      <strong>{title}</strong>
+      {seats.length === 0 ? (
+        <span className="lobby-empty">Open seat</span>
+      ) : (
+        seats.map((p) => (
+          <span key={p.id} className={p.id === localPlayerId ? "lobby-you" : undefined}>
+            {p.name}
+            {p.id === localPlayerId ? " (you)" : ""}
+          </span>
+        ))
+      )}
+    </div>
+  );
 }
 
 export function SkirmishLobby({
   name,
   onName,
   role,
-  hostName,
-  guestName,
-  hostConnected,
-  guestConnected,
+  players,
+  localPlayerId,
+  localTeam,
   invite,
   joinDraft,
   onJoinDraft,
@@ -116,14 +138,19 @@ export function SkirmishLobby({
   onJoin,
   onCopy,
   onShare,
-  onStart,
   onLeave,
+  onStart,
 }: SkirmishLobbyProps) {
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const south = players.filter((p) => p.team === "you");
+  const north = players.filter((p) => p.team === "foe");
+
   return (
     <div className="overlay title-overlay skirmish-lobby">
       <h1>Skirmish</h1>
-      <p>Two keeps. One invite link.</p>
+      <p>
+        Up to {MAX_SKIRMISH_PLAYERS} players. Teams auto-balance — south keep vs north keep.
+      </p>
 
       <label className="lobby-label">
         Your name
@@ -160,26 +187,25 @@ export function SkirmishLobby({
       )}
 
       {role !== "idle" && (
-        <div className="lobby-slots">
-          <div className="slot-row">
-            <span>{hostName || "Host"}</span>
-            <span>{slotStatus(hostConnected, link === "connecting" && role === "host")}</span>
+        <>
+          <div className="lobby-teams" aria-label="Teams">
+            <TeamColumn title={`South · ${south.length}`} seats={south} localPlayerId={localPlayerId} />
+            <TeamColumn title={`North · ${north.length}`} seats={north} localPlayerId={localPlayerId} />
           </div>
-          <div className="slot-row">
-            <span>{guestName || "Guest"}</span>
-            <span>{slotStatus(guestConnected, link === "connecting" && role === "guest")}</span>
-          </div>
-        </div>
+          {role === "guest" && link === "open" && (
+            <p className="lobby-seat">
+              You are on the {localTeam === "you" ? "south" : "north"} keep.
+            </p>
+          )}
+        </>
       )}
 
       {role === "host" && invite && (
         <>
-          {!guestConnected && (
-            <p className="lobby-stay">
-              Share opens Messages without leaving the lobby. Send the link, then come back — they should open it once
-              you are back on MULE.
-            </p>
-          )}
+          <p className="lobby-stay">
+            Share the link. New players sit on the smaller team. Start when both keeps have at least one
+            player.
+          </p>
           <input className="lobby-field" readOnly value={invite} onFocus={(ev) => ev.currentTarget.select()} />
           {canShare && (
             <button type="button" className="cta" onClick={onShare}>
@@ -195,7 +221,7 @@ export function SkirmishLobby({
         </>
       )}
 
-      {role === "guest" && link === "open" && <p>Waiting for host</p>}
+      {role === "guest" && link === "open" && <p>Waiting for host to start</p>}
 
       {status && <p className="lobby-status">{status}</p>}
 

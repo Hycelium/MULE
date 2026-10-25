@@ -1429,17 +1429,16 @@ export default function App() {
               name={skirmish.name}
               onName={skirmish.setName}
               role={skirmish.lobby.role}
-              hostName={skirmish.lobby.hostName}
-              guestName={skirmish.lobby.guestName}
-              hostConnected={skirmish.lobby.hostConnected}
-              guestConnected={skirmish.lobby.guestConnected}
+              players={skirmish.lobby.players}
+              localPlayerId={skirmish.lobby.localPlayerId}
+              localTeam={skirmish.lobby.localTeam}
               invite={skirmish.lobby.invite}
               joinDraft={skirmish.lobby.joinDraft}
               onJoinDraft={skirmish.setJoinDraft}
               status={skirmish.lobby.status}
               link={skirmish.lobby.link}
               copied={skirmish.lobby.copied}
-              canStart={skirmish.lobby.role === "host" && skirmish.lobby.guestConnected}
+              canStart={skirmish.canStart}
               onHost={skirmish.hostMatch}
               onJoin={() => skirmish.joinMatch()}
               onCopy={() => void skirmish.copyInvite()}
@@ -1473,7 +1472,12 @@ export default function App() {
               maps={skirmishMaps()}
               mapId={skirmish.lobby.selectedMapId}
               linkDown={skirmish.lobby.link === "down"}
-              canRematch={skirmish.lobby.role === "host" && skirmish.lobby.link === "open" && skirmish.lobby.guestConnected}
+              canRematch={
+                skirmish.lobby.role === "host" &&
+                skirmish.lobby.link === "open" &&
+                skirmish.lobby.players.some((p) => p.team === "you") &&
+                skirmish.lobby.players.some((p) => p.team === "foe")
+              }
               onPick={skirmish.pickMap}
               onRematch={() => {
                 skirmish.rematch();

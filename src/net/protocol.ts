@@ -168,16 +168,35 @@ export interface MatchSnapshot {
   nodes: SnapNode[];
   barricades: SnapBarricade[];
   pads: SnapPad[];
-  /** Body each side is driving in first person (host you / guest foe). */
+  /** @deprecated Prefer drivenBy. Kept for older guests. */
   driven?: Record<Team, number | null>;
+  /** First-person body keyed by player id. */
+  drivenBy?: Record<string, number | null>;
+}
+
+/** Host + guests in a room. Auto-balanced across the two keeps. */
+export const MAX_SKIRMISH_PLAYERS = 6;
+export const HOST_PLAYER_ID = "host";
+
+export interface RosterSeat {
+  id: string;
+  name: string;
+  team: Team;
+}
+
+export function pickBalancedTeam(seats: RosterSeat[]): Team {
+  const you = seats.filter((p) => p.team === "you").length;
+  const foe = seats.filter((p) => p.team === "foe").length;
+  return you <= foe ? "you" : "foe";
 }
 
 export type NetMsg =
-  | { t: "hello"; name: string }
-  | { t: "start"; map: MapDef }
+  | { t: "hello"; name: string; playerId: string }
+  | { t: "roster"; players: RosterSeat[] }
+  | { t: "start"; map: MapDef; team: Team; playerId: string }
   | { t: "pick"; mapId: string }
-  | { t: "rematch"; mapId: string }
-  | { t: "order"; order: RemoteOrder }
+  | { t: "rematch"; mapId: string; team: Team; playerId: string }
+  | { t: "order"; playerId: string; order: RemoteOrder }
   | { t: "snap"; snap: MatchSnapshot }
   | { t: "note"; text: string }
   | { t: "ping"; n: number; at: number }
@@ -243,8 +262,25 @@ export function asNetMsg(data: unknown): NetMsg | null {
   const t = (data as { t?: unknown }).t;
   if (typeof t !== "string") return null;
   if (t === "order") {
-    const order = (data as { order?: { t?: unknown } }).order;
+    const order = (data as { order?: { t?: unknown }; playerId?: unknown }).order;
+    const playerId = (data as { playerId?: unknown }).playerId;
+    if (typeof playerId !== "string" || !playerId) return null;
     if (!order || typeof order.t !== "string" || !ORDER_TYPES.has(order.t as RemoteOrder["t"])) return null;
+  }
+  if (t === "hello") {
+    const name = (data as { name?: unknown }).name;
+    const playerId = (data as { playerId?: unknown }).playerId;
+    if (typeof name !== "string" || typeof playerId !== "string" || !playerId) return null;
+  }
+  if (t === "roster") {
+    const players = (data as { players?: unknown }).players;
+    if (!Array.isArray(players)) return null;
+  }
+  if (t === "start" || t === "rematch") {
+    const team = (data as { team?: unknown }).team;
+    const playerId = (data as { playerId?: unknown }).playerId;
+    if (team !== "you" && team !== "foe") return null;
+    if (typeof playerId !== "string" || !playerId) return null;
   }
   if (t === "part") {
     const part = data as { id?: unknown; i?: unknown; n?: unknown; s?: unknown };
@@ -259,6 +295,7 @@ export function asNetMsg(data: unknown): NetMsg | null {
   }
   if (
     t === "hello" ||
+    t === "roster" ||
     t === "start" ||
     t === "pick" ||
     t === "rematch" ||

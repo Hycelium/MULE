@@ -2,13 +2,23 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { skirmishMap, skirmishMaps } from "../game/map";
 import type { GameRenderer } from "../game/render3d";
 import type { GameSim } from "../game/sim";
-import { createRoomId, inviteLink, parseRoomInput, type NetMsg } from "./protocol";
+import type { Team } from "../game/types";
+import {
+  HOST_PLAYER_ID,
+  MAX_SKIRMISH_PLAYERS,
+  createRoomId,
+  inviteLink,
+  parseRoomInput,
+  pickBalancedTeam,
+  type NetMsg,
+  type RosterSeat,
+} from "./protocol";
 import { RELAY_STATUS } from "./ice";
 import { ROOM_OPEN_STATUS, SkirmishLink } from "./skirmish";
 
 const DEFAULT_MAP = skirmishMaps()[0].id;
-
 const NAME_KEY = "roadkeep_name";
+const PLAYER_KEY = "roadkeep_player_id";
 const PICTURE_REJECTED = "The match picture was rejected.";
 
 export interface LobbyState {
@@ -17,18 +27,18 @@ export interface LobbyState {
   live: boolean;
   roomId: string;
   invite: string;
-  hostName: string;
-  guestName: string;
-  hostConnected: boolean;
-  guestConnected: boolean;
+  players: RosterSeat[];
+  /** PeerJS peer id → roster seat id (host only). */
+  peerToPlayer: Record<string, string>;
   status: string;
   joinDraft: string;
   copied: boolean;
   pingMs: number | null;
   path: string;
   link: "off" | "connecting" | "open" | "failed" | "down";
-  /** Map the host has chosen for the next rematch. */
   selectedMapId: string;
+  localPlayerId: string;
+  localTeam: Team;
 }
 
 function loadName() {
@@ -49,16 +59,30 @@ function saveName(name: string) {
   }
 }
 
+function loadPlayerId() {
+  try {
+    const saved = localStorage.getItem(PLAYER_KEY)?.trim();
+    if (saved) return saved;
+  } catch {
+    /* private mode */
+  }
+  const id = createRoomId();
+  try {
+    localStorage.setItem(PLAYER_KEY, id);
+  } catch {
+    /* private mode */
+  }
+  return id;
+}
+
 const idleLobby = (): LobbyState => ({
   open: false,
   role: "idle",
   live: false,
   roomId: "",
   invite: "",
-  hostName: "",
-  guestName: "",
-  hostConnected: false,
-  guestConnected: false,
+  players: [],
+  peerToPlayer: {},
   status: "",
   joinDraft: "",
   copied: false,
@@ -66,7 +90,13 @@ const idleLobby = (): LobbyState => ({
   path: "",
   link: "off",
   selectedMapId: DEFAULT_MAP,
+  localPlayerId: HOST_PLAYER_ID,
+  localTeam: "you",
 });
+
+function bothTeamsSeated(players: RosterSeat[]) {
+  return players.some((p) => p.team === "you") && players.some((p) => p.team === "foe");
+}
 
 export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | null>) {
   const [name, setNameState] = useState(loadName);
@@ -79,13 +109,27 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
   const lobbyRef = useRef(lobby);
   lobbyRef.current = lobby;
   const pictureWarned = useRef(false);
+  const guestPlayerIdRef = useRef(loadPlayerId());
+  /** Host maps PeerJS peer id → stable player id. */
+  const peerMapRef = useRef(new Map<string, string>());
 
   const setName = useCallback((value: string) => {
     const next = value.slice(0, 24);
     setNameState(next);
     saveName(next);
     if (linkRef.current && lobbyRef.current.link === "open") {
-      linkRef.current.send({ t: "hello", name: next.trim() || "Player" });
+      const playerId =
+        lobbyRef.current.role === "host" ? HOST_PLAYER_ID : lobbyRef.current.localPlayerId;
+      linkRef.current.send({ t: "hello", name: next.trim() || "Player", playerId });
+      if (lobbyRef.current.role === "host") {
+        setLobby((s) => {
+          const players = s.players.map((p) =>
+            p.id === HOST_PLAYER_ID ? { ...p, name: next.trim() || "Player" } : p,
+          );
+          linkRef.current?.send({ t: "roster", players });
+          return { ...s, players };
+        });
+      }
     }
   }, []);
 
@@ -95,35 +139,48 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     roleRef.current = "solo";
     liveRef.current = false;
     pictureWarned.current = false;
+    peerMapRef.current.clear();
     sim.setOrderSink(null);
     sim.setRemoteNote(null);
     sim.setLinkDown(false);
+    sim.clearPvpRoster();
     sim.setMatchMode("ai");
     sim.setLocalTeam("you");
+    sim.setLocalPlayerId(HOST_PLAYER_ID);
     sim.reset();
     rendererRef.current?.setHomeSide("you");
     setLobby(idleLobby());
     const url = new URL(window.location.href);
     if (url.searchParams.has("room")) {
       url.searchParams.delete("room");
-      const next = url.pathname + url.search + url.hash;
-      window.history.replaceState({}, "", next);
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     }
   }, [rendererRef, sim]);
 
   const beginGuest = useCallback(
-    (map: Parameters<GameSim["adoptMap"]>[0]) => {
+    (map: Parameters<GameSim["adoptMap"]>[0], team: Team, playerId: string) => {
       sim.setMatchMode("pvp");
-      sim.setLocalTeam("foe");
+      sim.setLocalTeam(team);
+      sim.setLocalPlayerId(playerId);
       sim.setRemoteNote(null);
-      sim.setOrderSink((order) => linkRef.current?.send({ t: "order", order }));
+      sim.setOrderSink((order) =>
+        linkRef.current?.send({ t: "order", playerId, order }),
+      );
       sim.adoptMap(map);
       sim.getState().phase = "running";
       sim.getState().paused = false;
       liveRef.current = true;
       roleRef.current = "guest";
-      rendererRef.current?.setHomeSide("foe");
-      setLobby((s) => ({ ...s, open: false, live: true, link: "open", status: "" }));
+      rendererRef.current?.setHomeSide(team);
+      setLobby((s) => ({
+        ...s,
+        open: false,
+        live: true,
+        link: "open",
+        status: "",
+        localTeam: team,
+        localPlayerId: playerId,
+      }));
     },
     [rendererRef, sim],
   );
@@ -136,16 +193,49 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
   }, [sim]);
 
   const onMessage = useCallback(
-    (msg: NetMsg) => {
+    (msg: NetMsg, fromPeerId?: string) => {
       if (msg.t === "hello") {
         const who = msg.name.trim().slice(0, 24) || "Player";
-        setLobby((s) =>
-          s.role === "host" ? { ...s, guestName: who, guestConnected: true } : { ...s, hostName: who, hostConnected: true },
-        );
+        const playerId = msg.playerId;
+        if (roleRef.current === "host" && fromPeerId) {
+          peerMapRef.current.set(fromPeerId, playerId);
+          setLobby((s) => {
+            if (s.players.some((p) => p.id === playerId)) {
+              const players = s.players.map((p) => (p.id === playerId ? { ...p, name: who } : p));
+              linkRef.current?.send({ t: "roster", players });
+              return { ...s, players, peerToPlayer: { ...s.peerToPlayer, [fromPeerId]: playerId } };
+            }
+            if (s.players.length >= MAX_SKIRMISH_PLAYERS) {
+              linkRef.current?.sendTo(fromPeerId, { t: "full" });
+              return s;
+            }
+            const team = pickBalancedTeam(s.players);
+            const players = [...s.players, { id: playerId, name: who, team }];
+            linkRef.current?.send({ t: "roster", players });
+            sim.setPvpRoster(players);
+            return {
+              ...s,
+              players,
+              peerToPlayer: { ...s.peerToPlayer, [fromPeerId]: playerId },
+            };
+          });
+        }
+        return;
+      }
+      if (msg.t === "roster") {
+        setLobby((s) => {
+          const mine = msg.players.find((p) => p.id === s.localPlayerId);
+          return {
+            ...s,
+            players: msg.players,
+            localTeam: mine?.team ?? s.localTeam,
+          };
+        });
+        if (roleRef.current === "guest") sim.setPvpRoster(msg.players);
         return;
       }
       if (msg.t === "start") {
-        beginGuest(msg.map);
+        beginGuest(msg.map, msg.team, msg.playerId);
         return;
       }
       if (msg.t === "pick") {
@@ -155,13 +245,23 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
       }
       if (msg.t === "rematch") {
         if (roleRef.current !== "guest" || lobbyRef.current.link !== "open") return;
-        if (!sim.applyRematch(msg.mapId, "guest")) return;
-        rendererRef.current?.setHomeSide("foe");
-        setLobby((s) => ({ ...s, selectedMapId: msg.mapId, live: true, open: false, link: "open" }));
+        if (!sim.applyRematch(msg.mapId)) return;
+        sim.setLocalTeam(msg.team);
+        sim.setLocalPlayerId(msg.playerId);
+        rendererRef.current?.setHomeSide(msg.team);
+        setLobby((s) => ({
+          ...s,
+          selectedMapId: msg.mapId,
+          live: true,
+          open: false,
+          link: "open",
+          localTeam: msg.team,
+          localPlayerId: msg.playerId,
+        }));
         return;
       }
       if (msg.t === "order") {
-        sim.applyRemoteOrder(msg.order);
+        sim.applyRemoteOrder(msg.order, msg.playerId);
         return;
       }
       if (msg.t === "snap") {
@@ -178,7 +278,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
         setLobby((s) => ({ ...s, pingMs: ms }));
       }
     },
-    [beginGuest, sim, warnPicture],
+    [beginGuest, rendererRef, sim, warnPicture],
   );
 
   const openLink = useCallback(
@@ -198,14 +298,40 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
           }));
         },
         onConnected: () => {
-          link.send({ t: "hello", name: nameRef.current.trim() || "Player" });
+          const playerId = role === "host" ? HOST_PLAYER_ID : guestPlayerIdRef.current;
+          link.send({ t: "hello", name: nameRef.current.trim() || "Player", playerId });
           setLobby((s) => ({
             ...s,
-            hostConnected: true,
-            guestConnected: true,
             link: "open",
-            status: "Connected",
+            status: role === "host" ? ROOM_OPEN_STATUS : "Connected — waiting for roster",
           }));
+        },
+        onGuestConnected: () => {
+          setLobby((s) => ({
+            ...s,
+            link: "open",
+            status: `${s.players.length}/${MAX_SKIRMISH_PLAYERS} seated · teams auto-balance`,
+          }));
+        },
+        onGuestDisconnected: (peerId) => {
+          const playerId = peerMapRef.current.get(peerId);
+          peerMapRef.current.delete(peerId);
+          if (!playerId) return;
+          setLobby((s) => {
+            const players = s.players.filter((p) => p.id !== playerId);
+            linkRef.current?.send({ t: "roster", players });
+            sim.setPvpRoster(players);
+            const peerToPlayer = { ...s.peerToPlayer };
+            delete peerToPlayer[peerId];
+            return {
+              ...s,
+              players,
+              peerToPlayer,
+              status: liveRef.current
+                ? "A player left."
+                : `${players.length}/${MAX_SKIRMISH_PLAYERS} seated · teams auto-balance`,
+            };
+          });
         },
         onMessage,
         onStatus: (text) => setLobby((s) => ({ ...s, status: text })),
@@ -224,9 +350,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
           setLobby((s) => ({
             ...s,
             link: "down",
-            guestConnected: s.role === "host" ? false : s.guestConnected,
-            hostConnected: s.role === "guest" ? false : s.hostConnected,
-            status: wasLive ? "Opponent disconnected." : text,
+            status: wasLive ? "Connection lost." : text,
           }));
         },
       });
@@ -242,16 +366,18 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     const self = nameRef.current.trim() || "Player";
     roleRef.current = "host";
     liveRef.current = false;
+    peerMapRef.current.clear();
+    const players: RosterSeat[] = [{ id: HOST_PLAYER_ID, name: self, team: "you" }];
+    sim.setLocalPlayerId(HOST_PLAYER_ID);
+    sim.setPvpRoster(players);
     setLobby({
       open: true,
       role: "host",
       live: false,
       roomId: id,
       invite: "",
-      hostName: self,
-      guestName: "",
-      hostConnected: false,
-      guestConnected: false,
+      players,
+      peerToPlayer: {},
       status: "Connecting",
       joinDraft: "",
       copied: false,
@@ -259,9 +385,11 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
       path: "",
       link: "connecting",
       selectedMapId: DEFAULT_MAP,
+      localPlayerId: HOST_PLAYER_ID,
+      localTeam: "you",
     });
     openLink("host", id);
-  }, [openLink]);
+  }, [openLink, sim]);
 
   const joinMatch = useCallback(
     (raw?: string) => {
@@ -271,18 +399,18 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
         return;
       }
       const self = nameRef.current.trim() || "Player";
+      const playerId = guestPlayerIdRef.current;
       roleRef.current = "guest";
       liveRef.current = false;
+      sim.setLocalPlayerId(playerId);
       setLobby({
         open: true,
         role: "guest",
         live: false,
         roomId,
         invite: "",
-        hostName: "",
-        guestName: self,
-        hostConnected: false,
-        guestConnected: false,
+        players: [{ id: playerId, name: self, team: "foe" }],
+        peerToPlayer: {},
         status: "Connecting",
         joinDraft: roomId,
         copied: false,
@@ -290,10 +418,12 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
         path: "",
         link: "connecting",
         selectedMapId: DEFAULT_MAP,
+        localPlayerId: playerId,
+        localTeam: "foe",
       });
       openLink("guest", roomId);
     },
-    [openLink],
+    [openLink, sim],
   );
 
   const announceMap = useCallback(() => {
@@ -312,25 +442,49 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
   const rematch = useCallback(() => {
     if (roleRef.current !== "host" || !liveRef.current || lobbyRef.current.link !== "open") return;
     const mapId = lobbyRef.current.selectedMapId;
-    if (!sim.applyRematch(mapId, "host")) return;
-    linkRef.current?.send({ t: "rematch", mapId });
+    if (!sim.applyRematch(mapId)) return;
+    const players = lobbyRef.current.players;
+    sim.setPvpRoster(players);
+    for (const [peerId, playerId] of peerMapRef.current) {
+      const seat = players.find((p) => p.id === playerId);
+      if (!seat) continue;
+      linkRef.current?.sendTo(peerId, {
+        t: "rematch",
+        mapId,
+        team: seat.team,
+        playerId: seat.id,
+      });
+    }
     linkRef.current?.send({ t: "snap", snap: sim.exportSnapshot() });
-    rendererRef.current?.setHomeSide("you");
+    rendererRef.current?.setHomeSide(lobbyRef.current.localTeam);
   }, [rendererRef, sim]);
 
   const startSkirmish = useCallback(() => {
-    if (roleRef.current !== "host" || !lobbyRef.current.guestConnected) return;
+    if (roleRef.current !== "host") return;
+    const players = lobbyRef.current.players;
+    if (!bothTeamsSeated(players)) return;
     sim.setMatchMode("pvp");
     sim.setLocalTeam("you");
+    sim.setLocalPlayerId(HOST_PLAYER_ID);
     sim.setOrderSink(null);
+    sim.setPvpRoster(players);
     sim.setRemoteNote((text) => linkRef.current?.send({ t: "note", text }));
     sim.startMatch();
     const map = sim.getActiveMap();
-    linkRef.current?.send({ t: "start", map });
+    for (const [peerId, playerId] of peerMapRef.current) {
+      const seat = players.find((p) => p.id === playerId);
+      if (!seat) continue;
+      linkRef.current?.sendTo(peerId, {
+        t: "start",
+        map,
+        team: seat.team,
+        playerId: seat.id,
+      });
+    }
     linkRef.current?.send({ t: "snap", snap: sim.exportSnapshot() });
     liveRef.current = true;
     rendererRef.current?.setHomeSide("you");
-    setLobby((s) => ({ ...s, open: false, live: true, link: "open", status: "" }));
+    setLobby((s) => ({ ...s, open: false, live: true, link: "open", status: "", localTeam: "you" }));
   }, [rendererRef, sim]);
 
   const shareInvite = useCallback(async () => {
@@ -339,7 +493,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     try {
       await navigator.share({ title: "MULE", text: "Join my MULE match", url: invite });
     } catch {
-      /* the share sheet was dismissed */
+      /* dismissed */
     }
   }, []);
 
@@ -349,7 +503,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     try {
       await navigator.clipboard.writeText(invite);
     } catch {
-      /* the field stays selectable */
+      /* field stays selectable */
     }
     setLobby((s) => ({ ...s, copied: true }));
   }, []);
@@ -376,7 +530,7 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
           else sentinel = lock;
         })
         .catch(() => {
-          /* the browser refused the lock */
+          /* refused */
         });
     };
     hold();
@@ -402,7 +556,6 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
       linkRef.current?.close();
       linkRef.current = null;
     };
-    // Join the invite once. StrictMode's remount closes the first peer and opens another.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -424,5 +577,6 @@ export function useSkirmish(sim: GameSim, rendererRef: RefObject<GameRenderer | 
     shareInvite,
     copyInvite,
     leave,
+    canStart: lobby.role === "host" && bothTeamsSeated(lobby.players) && lobby.link === "open",
   };
 }

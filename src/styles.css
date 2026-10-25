@@ -2171,6 +2171,52 @@ button:disabled {
   padding: 8px 10px;
 }
 
+.lobby-teams {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(420px, 100%);
+}
+
+.lobby-team {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  background: rgba(20, 16, 24, 0.9);
+  text-align: left;
+  min-height: 88px;
+}
+
+.lobby-team strong {
+  color: #e2bc72;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lobby-team span {
+  color: #f0e2c8;
+  font-size: 14px;
+}
+
+.lobby-team .lobby-empty {
+  color: #8a7a62;
+  font-style: italic;
+}
+
+.lobby-team .lobby-you {
+  color: #9dffc0;
+}
+
+.lobby-seat {
+  margin: 4px 0 0;
+  color: #e2bc72;
+  font-size: 13px;
+}
+
 .lobby-slots {
   display: flex;
   flex-direction: column;

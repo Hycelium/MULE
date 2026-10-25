@@ -1,20 +1,33 @@
 import Peer, { type DataConnection, type PeerError } from "peerjs";
-import { createRoomId, asNetMsg, splitWire, WireReassembly, type NetMsg } from "./protocol";
+import {
+  MAX_SKIRMISH_PLAYERS,
+  asNetMsg,
+  createRoomId,
+  splitWire,
+  WireReassembly,
+  type NetMsg,
+} from "./protocol";
 import { ATTEMPT_MS, RELAY_STATUS, directAttemptMs, iceConfiguration, mintRelay, nextLinkStep } from "./ice";
 
 const PATH_FAIL = "Could not open a path between the two networks. Try again.";
 const RELAY_BLOCKED = "No relay candidate. The carrier or the relay blocked it.";
 const RELAY_DOWN = "The relay did not answer. Two phones need it, because a direct path cannot open.";
-export const ROOM_OPEN_STATUS = "Room open. They can join now.";
+export const ROOM_OPEN_STATUS = "Room open. Share the link — teams auto-balance.";
 const HOST_AWAY_STATUS = "Waiting for the host to return";
 /** How long a guest keeps dialing while the host's peer is gone. */
 const HOST_AWAY_MS = 180_000;
 const HOST_AWAY_RETRY_MS = 2_000;
+/** Guest seats (host is separate). */
+const MAX_GUESTS = MAX_SKIRMISH_PLAYERS - 1;
 
 export interface SkirmishEvents {
   onReady: (id: string) => void;
   onConnected: () => void;
-  onMessage: (msg: NetMsg) => void;
+  /** Host only: a guest DataConnection opened (PeerJS peer id). */
+  onGuestConnected?: (peerId: string) => void;
+  /** Host only: a guest left. */
+  onGuestDisconnected?: (peerId: string) => void;
+  onMessage: (msg: NetMsg, fromPeerId?: string) => void;
   onStatus: (text: string) => void;
   onDirectFail: (text: string) => void;
   onDown: (text: string) => void;
@@ -24,7 +37,10 @@ export interface SkirmishEvents {
 
 export class SkirmishLink {
   private peer: Peer | null = null;
+  /** Guest's single link to the host. */
   private conn: DataConnection | null = null;
+  /** Host's open guest links, keyed by PeerJS peer id. */
+  private guests = new Map<string, DataConnection>();
   private role: "host" | "guest" = "host";
   private roomId = "";
   private opened = false;
@@ -82,8 +98,26 @@ export class SkirmishLink {
     this.begin();
   }
 
+  /** Guest → host, or host broadcast → every guest. */
   send(msg: NetMsg) {
-    const conn = this.conn;
+    if (this.role === "guest") {
+      this.push(this.conn, msg);
+      return;
+    }
+    for (const conn of this.guests.values()) this.push(conn, msg);
+  }
+
+  /** Host → one guest (by PeerJS peer id). */
+  sendTo(peerId: string, msg: NetMsg) {
+    if (this.role !== "host") return;
+    this.push(this.guests.get(peerId) ?? null, msg);
+  }
+
+  guestCount() {
+    return this.guests.size;
+  }
+
+  private push(conn: DataConnection | null | undefined, msg: NetMsg) {
     if (!conn?.open) return;
     let pieces: NetMsg[];
     try {
@@ -123,6 +157,7 @@ export class SkirmishLink {
       /* already gone */
     }
     this.conn = null;
+    this.guests.clear();
     this.peer = null;
   }
 
@@ -241,7 +276,8 @@ export class SkirmishLink {
   }
 
   private accept(conn: DataConnection) {
-    if (this.opened || this.conn?.open) {
+    if (this.role !== "host") return;
+    if (this.guests.size >= MAX_GUESTS || this.guests.has(conn.peer)) {
       conn.on("open", () => {
         try {
           conn.send({ t: "full" });
@@ -257,8 +293,7 @@ export class SkirmishLink {
       this.attemptStarted = Date.now();
       this.armDeadline();
     }
-    this.dropQuiet();
-    this.bind(conn);
+    this.bindHostGuest(conn);
   }
 
   private connectGuest() {
@@ -266,10 +301,48 @@ export class SkirmishLink {
     if (!peer || peer.destroyed || this.closed || this.stopped || this.opened || this.role !== "guest") return;
     this.dropQuiet();
     const conn = peer.connect(this.roomId, { reliable: true, serialization: "json" });
-    this.bind(conn);
+    this.bindGuestToHost(conn);
   }
 
-  private bind(conn: DataConnection) {
+  private bindHostGuest(conn: DataConnection) {
+    const peerId = conn.peer;
+    this.guests.set(peerId, conn);
+    conn.on("open", () => {
+      if (this.closed || this.guests.get(peerId) !== conn) return;
+      const first = !this.opened;
+      this.opened = true;
+      this.stopped = true;
+      this.clearTimers();
+      if (first) {
+        this.events.onConnected();
+        this.pingTimer = window.setInterval(() => this.ping(), 2000);
+      }
+      this.events.onGuestConnected?.(peerId);
+      this.watchIce(conn);
+      void this.logSelected(conn);
+    });
+    conn.on("data", (data) => this.onConnData(conn, data, peerId));
+    conn.on("iceStateChanged", (state) => {
+      if (this.ignored.has(conn) || this.guests.get(peerId) !== conn) return;
+      this.watchIce(conn);
+      if (state === "connected" || state === "completed") void this.logSelected(conn);
+    });
+    conn.on("error", (err) => {
+      if (this.ignored.has(conn) || this.guests.get(peerId) !== conn) return;
+      if ((err as { type?: string } | undefined)?.type === "message-too-big") this.rejectOnce();
+    });
+    conn.on("close", () => {
+      if (this.ignored.has(conn)) return;
+      if (this.guests.get(peerId) !== conn) return;
+      this.guests.delete(peerId);
+      this.events.onGuestDisconnected?.(peerId);
+      if (this.guests.size === 0 && this.opened && !this.closed) {
+        this.events.onDown("All guests disconnected.");
+      }
+    });
+  }
+
+  private bindGuestToHost(conn: DataConnection) {
     const gen = this.lostGen + 1;
     this.conn = conn;
     this.opened = false;
@@ -286,21 +359,7 @@ export class SkirmishLink {
       void this.logSelected(conn);
       this.pingTimer = window.setInterval(() => this.ping(), 2000);
     });
-    conn.on("data", (data) => {
-      const msg = asNetMsg(data);
-      if (!msg) {
-        const kind = data && typeof data === "object" ? (data as { t?: unknown }).t : undefined;
-        if (kind === "snap" || kind === "part") this.rejectOnce();
-        return;
-      }
-      if (msg.t === "part") {
-        const done = this.parts.take(msg);
-        if (done === "bad") this.rejectOnce();
-        else if (done) this.dispatch(done);
-        return;
-      }
-      this.dispatch(msg);
-    });
+    conn.on("data", (data) => this.onConnData(conn, data));
     conn.on("iceStateChanged", (state) => {
       if (this.ignored.has(conn) || this.conn !== conn) return;
       if (state === "checking" || state === "connected" || state === "completed") this.noteHostBack();
@@ -325,8 +384,24 @@ export class SkirmishLink {
         return;
       }
       this.clearTimers();
-      this.events.onDown("Opponent disconnected.");
+      this.events.onDown("Host disconnected.");
     });
+  }
+
+  private onConnData(_conn: DataConnection, data: unknown, fromPeerId?: string) {
+    const msg = asNetMsg(data);
+    if (!msg) {
+      const kind = data && typeof data === "object" ? (data as { t?: unknown }).t : undefined;
+      if (kind === "snap" || kind === "part") this.rejectOnce();
+      return;
+    }
+    if (msg.t === "part") {
+      const done = this.parts.take(msg);
+      if (done === "bad") this.rejectOnce();
+      else if (done) this.dispatch(done, fromPeerId);
+      return;
+    }
+    this.dispatch(msg, fromPeerId);
   }
 
   private onTransportLost(gen: number) {
@@ -413,31 +488,44 @@ export class SkirmishLink {
 
   private dropQuiet() {
     const conn = this.conn;
-    if (!conn) return;
-    this.ignored.add(conn);
-    this.conn = null;
-    try {
-      conn.close();
-    } catch {
-      /* already gone */
+    if (conn) {
+      this.ignored.add(conn);
+      this.conn = null;
+      try {
+        conn.close();
+      } catch {
+        /* already gone */
+      }
+    }
+    if (this.role === "host" && !this.opened) {
+      for (const g of this.guests.values()) {
+        this.ignored.add(g);
+        try {
+          g.close();
+        } catch {
+          /* already gone */
+        }
+      }
+      this.guests.clear();
     }
   }
 
-  private dispatch(msg: NetMsg) {
+  private dispatch(msg: NetMsg, fromPeerId?: string) {
     if (msg.t === "part") return;
     if (msg.t === "ping") {
-      this.send({ t: "pong", n: msg.n, at: msg.at });
+      if (fromPeerId) this.sendTo(fromPeerId, { t: "pong", n: msg.n, at: msg.at });
+      else this.send({ t: "pong", n: msg.n, at: msg.at });
       return;
     }
     if (msg.t === "pong") {
-      this.events.onMessage(msg);
+      this.events.onMessage(msg, fromPeerId);
       return;
     }
     if (msg.t === "full") {
-      this.events.onStatus("This match already has two players.");
+      this.events.onStatus("This match is full (6 players).");
       return;
     }
-    this.events.onMessage(msg);
+    this.events.onMessage(msg, fromPeerId);
   }
 
   private rejectOnce() {

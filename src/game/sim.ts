@@ -195,11 +195,15 @@ export class GameSim {
   private predicted = new Set<number>();
   private possessKeys = { w: false, a: false, s: false, d: false };
   private possessYaw = 0;
-  /** Guest body the host is driving from remote keys. */
-  private remoteBody: number | null = null;
-  private remoteKeys = { w: false, a: false, s: false, d: false };
-  private remoteYaw = Math.PI;
-  private remoteStrike = false;
+  /** Local seat id in a multiplayer room (host uses HOST_PLAYER_ID). */
+  private localPlayerId = "host";
+  /** Guest → team, filled by the lobby before the match runs. */
+  private playerTeams = new Map<string, Team>();
+  /** Remote first-person drivers keyed by player id. */
+  private remoteDrivers = new Map<
+    string,
+    { body: number | null; keys: { w: boolean; a: boolean; s: boolean; d: boolean }; yaw: number; strike: boolean }
+  >();
 
   constructor() {
     const meta = loadMeta();
@@ -374,6 +378,36 @@ export class GameSim {
 
   getLocalTeam() {
     return this.localTeam;
+  }
+
+  setLocalPlayerId(id: string) {
+    this.localPlayerId = id || "host";
+  }
+
+  getLocalPlayerId() {
+    return this.localPlayerId;
+  }
+
+  /** Host: map every seat to a keep before applying remote orders. */
+  setPvpRoster(seats: { id: string; team: Team }[]) {
+    this.playerTeams.clear();
+    this.remoteDrivers.clear();
+    for (const seat of seats) {
+      this.playerTeams.set(seat.id, seat.team);
+      if (seat.id !== this.localPlayerId) {
+        this.remoteDrivers.set(seat.id, {
+          body: null,
+          keys: { w: false, a: false, s: false, d: false },
+          yaw: seat.team === "you" ? 0 : Math.PI,
+          strike: false,
+        });
+      }
+    }
+  }
+
+  clearPvpRoster() {
+    this.playerTeams.clear();
+    this.remoteDrivers.clear();
   }
 
   setOrderSink(sink: ((order: RemoteOrder) => void) | null) {
@@ -665,10 +699,8 @@ export class GameSim {
    * Fresh skirmish on a catalog map. The local team stays put: a guest remains
    * `foe` and cannot be written onto the host's side.
    */
-  applyRematch(mapId: string, role: "host" | "guest" = this.localTeam === "foe" ? "guest" : "host"): boolean {
+  applyRematch(mapId: string): boolean {
     if (this.matchMode !== "pvp") return false;
-    if (role === "guest" && this.localTeam !== "foe") return false;
-    if (role === "host" && this.localTeam !== "you") return false;
     const map = skirmishMap(mapId);
     if (!map) return false;
     const team = this.localTeam;
@@ -3003,19 +3035,29 @@ export class GameSim {
         this.stepPossessed(u, dt);
         continue;
       }
-      if (this.matchMode === "pvp" && u.id === this.remoteBody) {
-        this.stepPossessed(u, dt, this.remoteKeys, this.remoteYaw);
-        if (this.remoteStrike) {
-          const savedYaw = this.possessYaw;
-          const savedId = this.state.possessedId;
-          this.possessYaw = this.remoteYaw;
-          this.state.possessedId = u.id;
-          this.possessAttack();
-          this.state.possessedId = savedId;
-          this.possessYaw = savedYaw;
-          this.remoteStrike = false;
+      if (this.matchMode === "pvp") {
+        let drivenBy: string | null = null;
+        for (const [pid, drive] of this.remoteDrivers) {
+          if (drive.body === u.id) {
+            drivenBy = pid;
+            break;
+          }
         }
-        continue;
+        if (drivenBy) {
+          const drive = this.remoteDrivers.get(drivenBy)!;
+          this.stepPossessed(u, dt, drive.keys, drive.yaw);
+          if (drive.strike) {
+            const savedYaw = this.possessYaw;
+            const savedId = this.state.possessedId;
+            this.possessYaw = drive.yaw;
+            this.state.possessedId = u.id;
+            this.possessAttack();
+            this.state.possessedId = savedId;
+            this.possessYaw = savedYaw;
+            drive.strike = false;
+          }
+          continue;
+        }
       }
       if (u.kind === "trebuchet") {
         this.stepTrebuchet(u, team, dt);
@@ -3176,10 +3218,12 @@ export class GameSim {
         continue;
       }
       if (u.id === possessedId) this.releasePossess("death");
-      if (u.id === this.remoteBody) {
-        this.remoteBody = null;
-        this.remoteKeys = { w: false, a: false, s: false, d: false };
-        this.remoteStrike = false;
+      for (const drive of this.remoteDrivers.values()) {
+        if (drive.body === u.id) {
+          drive.body = null;
+          drive.keys = { w: false, a: false, s: false, d: false };
+          drive.strike = false;
+        }
       }
       const killer = this.enemy(u.team);
       this.state.gold[killer] += u.bounty;
@@ -4074,13 +4118,14 @@ export class GameSim {
     return false;
   }
 
-  applyRemoteOrder(order: RemoteOrder) {
+  applyRemoteOrder(order: RemoteOrder, playerId: string) {
     if (this.matchMode !== "pvp" || this.state.phase !== "running") return;
     // A stale client may still send rush. Ignore it for both teams; the match clock launches waves.
     if (order.t === "rush") return;
-    // The guest owns the north side only. An order stamped `you` must not spend or move the host.
-    if (order.t !== "pause" && order.t !== "speed" && order.team !== "foe") return;
-    const team: Team = "foe";
+    const team = this.playerTeams.get(playerId);
+    if (!team) return;
+    // Seat may only command its own keep (pause/speed are match-wide).
+    if (order.t !== "pause" && order.t !== "speed" && "team" in order && order.team !== team) return;
     this.applyingRemote = true;
     try {
       switch (order.t) {
@@ -4144,39 +4189,55 @@ export class GameSim {
         case "drive": {
           const body = this.state.units.find((u) => u.id === order.id);
           if (!body || !this.canPossess(body, team)) break;
-          this.remoteBody = body.id;
-          this.remoteKeys = { w: order.w, a: order.a, s: order.s, d: order.d };
-          this.remoteYaw = order.yaw;
-          body.rallyPoint = undefined;
-          body.engageFrom = undefined;
-          body.targetUnitId = undefined;
-          body.aiHeldForRush = undefined;
+          this.claimRemoteBody(playerId, body, team);
+          const drive = this.remoteDrivers.get(playerId);
+          if (!drive) break;
+          drive.body = body.id;
+          drive.keys = { w: order.w, a: order.a, s: order.s, d: order.d };
+          drive.yaw = order.yaw;
           break;
         }
-        case "strike":
-          this.remoteStrike = true;
+        case "strike": {
+          const drive = this.remoteDrivers.get(playerId);
+          if (drive) drive.strike = true;
           break;
+        }
         case "possess": {
           const body = this.state.units.find((u) => u.id === order.id);
           if (!body || !this.canPossess(body, team)) break;
-          this.remoteBody = body.id;
-          this.remoteKeys = { w: false, a: false, s: false, d: false };
-          this.remoteYaw = body.team === "you" ? 0 : Math.PI;
-          body.rallyPoint = undefined;
-          body.engageFrom = undefined;
-          body.targetUnitId = undefined;
-          body.aiHeldForRush = undefined;
+          this.claimRemoteBody(playerId, body, team);
+          const drive = this.remoteDrivers.get(playerId);
+          if (!drive) break;
+          drive.body = body.id;
+          drive.keys = { w: false, a: false, s: false, d: false };
+          drive.yaw = body.team === "you" ? 0 : Math.PI;
           break;
         }
-        case "unpossess":
-          this.remoteBody = null;
-          this.remoteKeys = { w: false, a: false, s: false, d: false };
-          this.remoteStrike = false;
+        case "unpossess": {
+          const drive = this.remoteDrivers.get(playerId);
+          if (!drive) break;
+          drive.body = null;
+          drive.keys = { w: false, a: false, s: false, d: false };
+          drive.strike = false;
           break;
+        }
       }
     } finally {
       this.applyingRemote = false;
     }
+  }
+
+  /** One body per player; a teammate hop clears the previous claim. */
+  private claimRemoteBody(playerId: string, body: Unit, team: Team) {
+    if (this.state.possessedId === body.id) this.releasePossess("esc");
+    for (const [pid, drive] of this.remoteDrivers) {
+      if (pid !== playerId && drive.body === body.id) drive.body = null;
+    }
+    body.rallyPoint = undefined;
+    body.engageFrom = undefined;
+    body.targetUnitId = undefined;
+    body.aiHeldForRush = undefined;
+    void team;
   }
 
   exportSnapshot(): MatchSnapshot {
@@ -4291,10 +4352,25 @@ export class GameSim {
         zone: p.zone,
       })),
       driven: {
-        you: this.localTeam === "you" ? s.possessedId : this.remoteBody,
-        foe: this.localTeam === "foe" ? s.possessedId : this.remoteBody,
+        you: this.drivenUnitForTeam("you"),
+        foe: this.drivenUnitForTeam("foe"),
       },
+      drivenBy: this.exportDrivenBy(),
     };
+  }
+
+  private drivenUnitForTeam(team: Team): number | null {
+    if (this.localTeam === team) return this.state.possessedId;
+    for (const [pid, drive] of this.remoteDrivers) {
+      if (this.playerTeams.get(pid) === team && drive.body != null) return drive.body;
+    }
+    return null;
+  }
+
+  private exportDrivenBy(): Record<string, number | null> {
+    const out: Record<string, number | null> = { [this.localPlayerId]: this.state.possessedId };
+    for (const [pid, drive] of this.remoteDrivers) out[pid] = drive.body;
+    return out;
   }
 
   private armPose(
@@ -4586,7 +4662,8 @@ export class GameSim {
     s.soundOn = soundOn;
     s.audioUnlocked = audioUnlocked;
     s.hoveredPadId = hoveredPadId;
-    const drivenId = snap.driven?.[this.localTeam] ?? prevPossessed;
+    const drivenId =
+      snap.drivenBy?.[this.localPlayerId] ?? snap.driven?.[this.localTeam] ?? prevPossessed;
     const drivenBody = drivenId != null ? s.units.find((u) => u.id === drivenId && u.team === this.localTeam && u.hp > 0) : undefined;
     s.possessedId = drivenBody?.id ?? null;
     if (!drivenBody) {
