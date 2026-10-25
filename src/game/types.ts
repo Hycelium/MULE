@@ -75,8 +75,10 @@ export interface Unit {
   rallyBuffTimer?: number;
   /** Arena gun-game ladder index (0 = peon … 4 = runner). */
   arenaRung?: number;
-  /** Arena kills scored by this fighter. */
+  /** Arena kills scored by this fighter (career). */
   arenaKills?: number;
+  /** Kills on the current rung toward the next promote. */
+  arenaRungProgress?: number;
   /** Last unit that damaged this body (arena kill credit). */
   lastHitBy?: number;
 }
@@ -344,8 +346,20 @@ export interface GameState {
   possessAimUnitId: number | null;
   /** Barracks troops concentrate on this river belt when set. */
   defendLayer: Record<Team, DefendLayerId | null>;
-  /** Local FFA gun-game practice; null outside arena mode. */
+  /** Local FFA gun-game practice or Final Duel yard; null outside those modes. */
   arena: ArenaMatchState | null;
+  /** Skirmish Final Duel (propose → accept → courtyard 1v1). */
+  finalDuel: FinalDuelState | null;
+}
+
+export type FinalDuelPhase = "off" | "proposed" | "active";
+export type FinalDuelLife = "runner" | "ward";
+
+export interface FinalDuelState {
+  phase: FinalDuelPhase;
+  proposedBy: Team | null;
+  life: Record<Team, FinalDuelLife | null>;
+  unitId: Record<Team, number | null>;
 }
 
 export interface ArenaRespawn {
@@ -354,11 +368,15 @@ export interface ArenaRespawn {
   kills: number;
   at: number;
   isPlayer: boolean;
+  /** Duel: which life this respawn restores. */
+  duelLife?: FinalDuelLife;
 }
 
 export interface ArenaMatchState {
   playerUnitId: number | null;
   respawns: ArenaRespawn[];
+  /** True while skirmish Final Duel owns the courtyard. */
+  duel?: boolean;
 }
 
 export interface ArenaStandingUi {
@@ -490,7 +508,20 @@ export interface UiSnapshot {
   arenaRungMax: number;
   arenaRungLabel: string;
   arenaKills: number;
+  /** Kills on current rung / kills needed to promote (or win on runner). */
+  arenaProgress: number;
+  arenaNeed: number;
   arenaStandings: ArenaStandingUi[];
+  /** Match clock seconds (skirmish Final Duel unlock). */
+  matchTime: number;
+  finalDuel: {
+    phase: FinalDuelPhase;
+    proposedBy: Team | null;
+    youLife: FinalDuelLife | null;
+    foeLife: FinalDuelLife | null;
+    canPropose: boolean;
+    canAccept: boolean;
+  } | null;
 }
 
 export interface RectHit {

@@ -62,6 +62,8 @@ interface OverlaysProps {
   onReturnToMap: () => void;
   onMarchAgain: () => void;
   onRerollMap: () => void;
+  onAcceptDuel?: () => void;
+  onDeclineDuel?: () => void;
 }
 
 export function Overlays({
@@ -76,6 +78,8 @@ export function Overlays({
   onReturnToMap,
   onMarchAgain,
   onRerollMap,
+  onAcceptDuel,
+  onDeclineDuel,
 }: OverlaysProps) {
   const [shareNote, setShareNote] = useState("");
   const [arcadeOpen, setArcadeOpen] = useState(false);
@@ -197,7 +201,22 @@ export function Overlays({
         </div>
       )}
 
-      {ui.phase === "ended" && !skirmishLive && ui.arena && (
+      {ui.phase === "running" && ui.finalDuel?.canAccept && (
+        <div className="overlay" role="dialog" aria-label="Final Duel challenge">
+          <h2>Final Duel</h2>
+          <p>Runner first. When that body falls you return as a ward. Lose the ward and the match ends.</p>
+          <div className="title-actions">
+            <button type="button" className="cta" onClick={onAcceptDuel}>
+              Accept
+            </button>
+            <button type="button" className="ghost" onClick={onDeclineDuel}>
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
+
+      {ui.phase === "ended" && !skirmishLive && ui.arena && !ui.pvp && (
         <div className="overlay">
           <h2>{ui.endReason}</h2>
           <p>

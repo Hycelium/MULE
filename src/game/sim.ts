@@ -119,11 +119,14 @@ import {
   ARENA_BOT_COUNT,
   ARENA_LADDER,
   ARENA_RESPAWN_DELAY,
+  FINAL_DUEL_AFTER,
+  arenaKillsNeeded,
   arenaMap,
   arenaRungKind,
   arenaSpawnPoints,
   clampToArena,
   demoteRung,
+  duelRung,
   promoteRung,
 } from "./arena";
 import { foeBrainStats, notifyAiMatchEnd, notifyAiMatchStart, runAiTurn } from "./ai";
@@ -387,6 +390,7 @@ export class GameSim {
       won: null,
       defendLayer: { you: null, foe: null },
       arena: null,
+      finalDuel: { phase: "off", proposedBy: null, life: { you: null, foe: null }, unitId: { you: null, foe: null } },
     };
   }
 
@@ -946,6 +950,7 @@ export class GameSim {
       ignoreEnemyCreeps: false,
       arenaRung: rung,
       arenaKills: kills,
+      arenaRungProgress: 0,
       lastHitBy: undefined,
     };
     this.state.units.push(u);
@@ -3548,7 +3553,7 @@ export class GameSim {
       u.pos.x += (mx / mag) * speed * dt;
       u.pos.y += (my / mag) * speed * dt;
     }
-    if (this.matchMode === "arena") {
+    if (this.matchMode === "arena" || this.state.arena) {
       clampToArena(u.pos);
     } else {
       const { minX, maxX } = mapBounds(this.activeMap.seed);
@@ -3812,6 +3817,10 @@ export class GameSim {
     const s = this.state;
     const arena = s.arena;
     if (!arena) return;
+    if (arena.duel && s.finalDuel?.phase === "active") {
+      this.cleanupDuelDeaths();
+      return;
+    }
     const dead = s.units.filter((u) => u.hp <= 0);
     if (dead.length === 0) return;
     const living = s.units.filter((u) => u.hp > 0);
@@ -3824,13 +3833,18 @@ export class GameSim {
       if (liveKiller) {
         const rung = liveKiller.arenaRung ?? 0;
         liveKiller.arenaKills = (liveKiller.arenaKills ?? 0) + 1;
+        liveKiller.arenaRungProgress = (liveKiller.arenaRungProgress ?? 0) + 1;
         if (liveKiller.team === "you") s.stats.you.slain += 1;
         else s.stats.foe.slain += 1;
-        if (rung >= ARENA_LADDER.length - 1) {
-          winnerId = liveKiller.id;
-        } else {
-          this.applyArenaKind(liveKiller, promoteRung(rung));
-          this.addFloat(UNIT_DEFS[liveKiller.kind].label, liveKiller.pos.x, liveKiller.pos.y - 14, "#c8e6ff");
+        const need = arenaKillsNeeded(rung);
+        if (liveKiller.arenaRungProgress >= need) {
+          if (rung >= ARENA_LADDER.length - 1) {
+            winnerId = liveKiller.id;
+          } else {
+            this.applyArenaKind(liveKiller, promoteRung(rung));
+            liveKiller.arenaRungProgress = 0;
+            this.addFloat(UNIT_DEFS[liveKiller.kind].label, liveKiller.pos.x, liveKiller.pos.y - 14, "#c8e6ff");
+          }
         }
       }
       this.emitCombat("unitDeath", u.pos, undefined, u.team);
@@ -3849,11 +3863,55 @@ export class GameSim {
       if (champ) {
         const youWin = champ.id === arena.playerUnitId;
         this.finishMatch(
-          youWin ? "Victory. Runner's kill." : "Defeat. A rival claimed the runner kill.",
+          youWin ? "Victory. Ladder cleared — 12 kills." : "Defeat. A rival cleared the ladder.",
           youWin,
         );
       }
     }
+  }
+
+  private cleanupDuelDeaths() {
+    const s = this.state;
+    const duel = s.finalDuel;
+    const arena = s.arena;
+    if (!duel || duel.phase !== "active" || !arena) return;
+    const dead = s.units.filter((u) => u.hp <= 0);
+    if (dead.length === 0) return;
+    const living = s.units.filter((u) => u.hp > 0);
+    for (const u of dead) {
+      if (u.id === s.possessedId) this.releasePossess("death");
+      for (const drive of this.remoteDrivers.values()) {
+        if (drive.body === u.id) {
+          drive.body = null;
+          drive.keys = { w: false, a: false, s: false, d: false };
+          drive.strike = false;
+        }
+      }
+      const life = duel.life[u.team];
+      this.emitCombat("unitDeath", u.pos, undefined, u.team);
+      this.addFloat("✕", u.pos.x, u.pos.y - 8, "#ff8866");
+      if (life === "runner") {
+        duel.life[u.team] = "ward";
+        arena.respawns.push({
+          team: u.team,
+          rung: duelRung("ward"),
+          kills: 0,
+          at: s.time + ARENA_RESPAWN_DELAY,
+          isPlayer: u.team === this.localTeam,
+          duelLife: "ward",
+        });
+        this.addToast(`${u.team === "you" ? "South" : "North"} falls to ward.`);
+      } else {
+        duel.life[u.team] = null;
+        duel.unitId[u.team] = null;
+        const winner: Team = u.team === "you" ? "foe" : "you";
+        this.finishMatch(
+          winner === "you" ? "Victory. Final Duel." : "Defeat. Final Duel.",
+          winner === "you",
+        );
+      }
+    }
+    s.units = living;
   }
 
   private tickArenaRespawns() {
@@ -3864,7 +3922,7 @@ export class GameSim {
     arena.respawns = arena.respawns.filter((r) => r.at > s.time);
     if (ready.length === 0) return;
     const taken = s.units.map((u) => u.pos);
-    const ring = arenaSpawnPoints(1 + ARENA_BOT_COUNT);
+    const ring = arenaSpawnPoints(arena.duel ? 2 : 1 + ARENA_BOT_COUNT);
     for (const job of ready) {
       let pos = ring[0];
       let best = -1;
@@ -3877,11 +3935,130 @@ export class GameSim {
       }
       const u = this.spawnArenaFighter(job.team, job.rung, job.kills, pos, job.isPlayer);
       taken.push(u.pos);
-      if (job.isPlayer) {
+      if (arena.duel && s.finalDuel) {
+        s.finalDuel.unitId[job.team] = u.id;
+        if (job.team === this.localTeam) {
+          arena.playerUnitId = u.id;
+          this.tryPossess(u.id);
+        } else {
+          for (const [pid, drive] of this.remoteDrivers) {
+            if (this.playerTeams.get(pid) === job.team) {
+              drive.body = u.id;
+              drive.keys = { w: false, a: false, s: false, d: false };
+              drive.yaw = job.team === "you" ? 0 : Math.PI;
+              drive.strike = false;
+            }
+          }
+        }
+      } else if (job.isPlayer) {
         arena.playerUnitId = u.id;
         this.tryPossess(u.id);
       }
     }
+  }
+
+  /** After 10 minutes of skirmish, either side may propose Final Duel. */
+  proposeFinalDuel() {
+    if (this.matchMode !== "pvp" || this.state.phase !== "running") return false;
+    if (this.redirect({ t: "duelPropose", team: this.localTeam })) return true;
+    return this.applyDuelPropose(this.localTeam);
+  }
+
+  acceptFinalDuel() {
+    if (this.matchMode !== "pvp" || this.state.phase !== "running") return false;
+    if (this.redirect({ t: "duelAccept", team: this.localTeam })) return true;
+    return this.applyDuelAccept(this.localTeam);
+  }
+
+  declineFinalDuel() {
+    if (this.matchMode !== "pvp" || this.state.phase !== "running") return false;
+    if (this.redirect({ t: "duelDecline", team: this.localTeam })) return true;
+    return this.applyDuelDecline(this.localTeam);
+  }
+
+  private applyDuelPropose(team: Team) {
+    const s = this.state;
+    const duel = s.finalDuel;
+    if (!duel || duel.phase !== "off") return false;
+    if (s.time < FINAL_DUEL_AFTER) return false;
+    if (s.arena?.duel) return false;
+    duel.phase = "proposed";
+    duel.proposedBy = team;
+    this.addToast(
+      team === this.localTeam
+        ? "Final Duel proposed — waiting on the foe."
+        : "Final Duel proposed — Accept or Decline.",
+    );
+    return true;
+  }
+
+  private applyDuelDecline(team: Team) {
+    const duel = this.state.finalDuel;
+    if (!duel || duel.phase !== "proposed") return false;
+    if (duel.proposedBy === team) return false;
+    duel.phase = "off";
+    duel.proposedBy = null;
+    this.addToast("Final Duel declined.");
+    return true;
+  }
+
+  private applyDuelAccept(team: Team) {
+    const duel = this.state.finalDuel;
+    if (!duel || duel.phase !== "proposed") return false;
+    if (!duel.proposedBy || duel.proposedBy === team) return false;
+    this.beginFinalDuel();
+    return true;
+  }
+
+  private beginFinalDuel() {
+    const s = this.state;
+    this.releasePossess("esc");
+    for (const drive of this.remoteDrivers.values()) {
+      drive.body = null;
+      drive.keys = { w: false, a: false, s: false, d: false };
+      drive.strike = false;
+    }
+    s.buildings = [];
+    s.villagers = [];
+    s.barricades = [];
+    s.units = [];
+    s.pads = [];
+    s.nodes = [];
+    s.commandMarkers = [];
+    s.selectedBuildingId = null;
+    s.selectedVillagerIds = [];
+    s.selectedKeepTeam = null;
+    s.buildSelection = null;
+    s.arena = { playerUnitId: null, respawns: [], duel: true };
+    s.finalDuel = {
+      phase: "active",
+      proposedBy: null,
+      life: { you: "runner", foe: "runner" },
+      unitId: { you: null, foe: null },
+    };
+    const spawns = arenaSpawnPoints(2);
+    const you = this.spawnArenaFighter("you", duelRung("runner"), 0, spawns[0], true);
+    const foe = this.spawnArenaFighter("foe", duelRung("runner"), 0, spawns[1], false);
+    s.finalDuel.unitId.you = you.id;
+    s.finalDuel.unitId.foe = foe.id;
+    if (this.localTeam === "you") {
+      s.arena.playerUnitId = you.id;
+      this.tryPossess(you.id);
+    } else {
+      s.arena.playerUnitId = foe.id;
+      this.tryPossess(foe.id);
+    }
+    for (const [pid, drive] of this.remoteDrivers) {
+      const seat = this.playerTeams.get(pid);
+      if (seat === "you") {
+        drive.body = you.id;
+        drive.yaw = 0;
+      } else if (seat === "foe") {
+        drive.body = foe.id;
+        drive.yaw = Math.PI;
+      }
+    }
+    this.addToast("Final Duel — runners first; ward is your last life.");
   }
 
   private tickArenaBots(dt: number) {
@@ -3892,6 +4069,35 @@ export class GameSim {
       if (u.id === s.possessedId) {
         this.stepPossessed(u, dt);
         continue;
+      }
+      if (this.matchMode === "pvp" || s.arena?.duel) {
+        let drivenBy: string | null = null;
+        for (const [pid, drive] of this.remoteDrivers) {
+          if (drive.body === u.id) {
+            drivenBy = pid;
+            break;
+          }
+        }
+        if (drivenBy) {
+          const drive = this.remoteDrivers.get(drivenBy)!;
+          this.stepPossessed(u, dt, drive.keys, drive.yaw);
+          if (drive.strike) {
+            const savedYaw = this.possessYaw;
+            const savedId = s.possessedId;
+            this.possessYaw = drive.yaw;
+            s.possessedId = u.id;
+            this.possessAttack();
+            s.possessedId = savedId;
+            this.possessYaw = savedYaw;
+            drive.strike = false;
+          }
+          clampToArena(u.pos);
+          continue;
+        }
+        if (s.arena?.duel) {
+          clampToArena(u.pos);
+          continue;
+        }
       }
       const foes = s.units.filter((e) => e.id !== u.id && e.hp > 0);
       if (foes.length === 0) continue;
@@ -4298,7 +4504,7 @@ export class GameSim {
     s.phase = "ended";
     s.endReason = reason;
     s.won = won;
-    if (this.matchMode === "pvp" || this.matchMode === "arena") return;
+    if (this.matchMode === "pvp" || this.matchMode === "arena" || this.state.arena?.duel) return;
     notifyAiMatchEnd(won);
     this.freshHold = false;
     if (won === true && this.campaignMission) {
@@ -4358,7 +4564,7 @@ export class GameSim {
 
     s.time += dt;
 
-    if (this.matchMode === "arena") {
+    if (this.matchMode === "arena" || this.state.arena?.duel) {
       this.tickArena(dt);
       return;
     }
@@ -4965,6 +5171,15 @@ export class GameSim {
           drive.strike = false;
           break;
         }
+        case "duelPropose":
+          this.applyDuelPropose(team);
+          break;
+        case "duelAccept":
+          this.applyDuelAccept(team);
+          break;
+        case "duelDecline":
+          this.applyDuelDecline(team);
+          break;
       }
     } finally {
       this.applyingRemote = false;
@@ -5105,6 +5320,17 @@ export class GameSim {
       },
       drivenBy: this.exportDrivenBy(),
       defendLayer: { you: s.defendLayer.you, foe: s.defendLayer.foe },
+      finalDuel: s.finalDuel
+        ? {
+            phase: s.finalDuel.phase,
+            proposedBy: s.finalDuel.proposedBy,
+            lifeYou: s.finalDuel.life.you,
+            lifeFoe: s.finalDuel.life.foe,
+            unitYou: s.finalDuel.unitId.you,
+            unitFoe: s.finalDuel.unitId.foe,
+            duelYard: !!s.arena?.duel,
+          }
+        : undefined,
     };
   }
 
@@ -5259,6 +5485,23 @@ export class GameSim {
     s.keepLevel = snap.keepLevel;
     if (snap.defendLayer) {
       s.defendLayer = { you: snap.defendLayer.you ?? null, foe: snap.defendLayer.foe ?? null };
+    }
+    if (snap.finalDuel) {
+      s.finalDuel = {
+        phase: snap.finalDuel.phase,
+        proposedBy: snap.finalDuel.proposedBy,
+        life: { you: snap.finalDuel.lifeYou, foe: snap.finalDuel.lifeFoe },
+        unitId: { you: snap.finalDuel.unitYou, foe: snap.finalDuel.unitFoe },
+      };
+      if (snap.finalDuel.duelYard) {
+        s.arena = {
+          playerUnitId: s.finalDuel.unitId[this.localTeam],
+          respawns: s.arena?.respawns ?? [],
+          duel: true,
+        };
+      } else if (s.arena?.duel) {
+        s.arena = null;
+      }
     }
     s.gold.you = snap.gold.you;
     s.gold.foe = snap.gold.foe;
@@ -5497,7 +5740,9 @@ export class GameSim {
     const body = s.possessedId != null ? s.units.find((u) => u.id === s.possessedId && u.hp > 0) : undefined;
     let endReason = s.endReason;
     if (view === "foe" && s.phase === "ended") {
-      if (s.won === true) {
+      if (s.endReason.includes("Final Duel")) {
+        endReason = s.won ? "Defeat. Final Duel." : "Victory. Final Duel.";
+      } else if (s.won === true) {
         endReason = s.endReason.startsWith("Victory by stone")
           ? "Defeat by stone. The foe held stronger."
           : "Defeat. Your keep has fallen.";
@@ -5618,19 +5863,42 @@ export class GameSim {
         : null,
       defendLayer: s.defendLayer[view],
       defendLayers: defendLayerOptions(mapView.seed),
-      arena: this.matchMode === "arena",
+      arena: this.matchMode === "arena" || !!s.arena,
       arenaRung: (() => {
         if (body) return body.arenaRung ?? 0;
-        const pending = s.arena?.respawns.find((r) => r.isPlayer);
+        const pending = s.arena?.respawns.find((r) => r.isPlayer || r.team === view);
         return pending?.rung ?? 0;
       })(),
       arenaRungMax: ARENA_LADDER.length,
       arenaRungLabel: (() => {
-        const rung = body?.arenaRung ?? s.arena?.respawns.find((r) => r.isPlayer)?.rung ?? 0;
+        const rung = body?.arenaRung ?? s.arena?.respawns.find((r) => r.isPlayer || r.team === view)?.rung ?? 0;
         return UNIT_DEFS[arenaRungKind(rung)].label;
       })(),
-      arenaKills: body?.arenaKills ?? s.arena?.respawns.find((r) => r.isPlayer)?.kills ?? 0,
+      arenaKills: body?.arenaKills ?? s.arena?.respawns.find((r) => r.isPlayer || r.team === view)?.kills ?? 0,
+      arenaProgress: body?.arenaRungProgress ?? 0,
+      arenaNeed: arenaKillsNeeded(body?.arenaRung ?? 0),
       arenaStandings: this.matchMode === "arena" ? this.arenaStandingsUi() : [],
+      matchTime: s.time,
+      finalDuel: s.finalDuel
+        ? {
+            phase: s.finalDuel.phase,
+            proposedBy: s.finalDuel.proposedBy,
+            youLife: s.finalDuel.life[view],
+            foeLife: s.finalDuel.life[other],
+            canPropose:
+              this.matchMode === "pvp" &&
+              s.phase === "running" &&
+              s.finalDuel.phase === "off" &&
+              s.time >= FINAL_DUEL_AFTER &&
+              !s.arena?.duel,
+            canAccept:
+              this.matchMode === "pvp" &&
+              s.phase === "running" &&
+              s.finalDuel.phase === "proposed" &&
+              s.finalDuel.proposedBy != null &&
+              s.finalDuel.proposedBy !== view,
+          }
+        : null,
     };
   }
 

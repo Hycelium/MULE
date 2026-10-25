@@ -3,9 +3,13 @@ import { WORLD_H, WORLD_W } from "./balance";
 import type { MapDef, Team, UnitKind } from "./types";
 import { crenellate, flaredRoof, materials, roundTower, tiledBox } from "./models/materials";
 
-/** Gun-game ladder: one kill advances one rung; death drops one (floor peon). */
+/** Gun-game ladder: peon → levy → archer → ward → runner. Death drops one (floor peon). */
 export const ARENA_LADDER: UnitKind[] = ["peon", "levy", "archer", "ward", "runner"];
+/** Kills needed on each rung before promote (runner's 5 clears the ladder / wins). */
+export const ARENA_KILLS_NEEDED = [1, 1, 2, 3, 5] as const;
 export const ARENA_BOT_COUNT = 6;
+/** Skirmish Final Duel unlock (seconds). */
+export const FINAL_DUEL_AFTER = 600;
 /** Half-extent of the playable courtyard (sim units). */
 export const ARENA_HALF = 108;
 export const ARENA_CX = WORLD_W / 2;
@@ -52,6 +56,16 @@ export function clampToArena(pos: { x: number; y: number }, margin = 6) {
 export function arenaRungKind(rung: number): UnitKind {
   const i = Math.max(0, Math.min(ARENA_LADDER.length - 1, Math.floor(rung)));
   return ARENA_LADDER[i];
+}
+
+export function arenaKillsNeeded(rung: number) {
+  const i = Math.max(0, Math.min(ARENA_KILLS_NEEDED.length - 1, Math.floor(rung)));
+  return ARENA_KILLS_NEEDED[i];
+}
+
+/** Rung index for a duel life stage. */
+export function duelRung(life: "runner" | "ward") {
+  return life === "runner" ? ARENA_LADDER.indexOf("runner") : ARENA_LADDER.indexOf("ward");
 }
 
 export function demoteRung(rung: number) {

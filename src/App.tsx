@@ -105,7 +105,11 @@ const defaultUi: UiSnapshot = {
   arenaRungMax: 5,
   arenaRungLabel: "Peon",
   arenaKills: 0,
+  arenaProgress: 0,
+  arenaNeed: 1,
   arenaStandings: [],
+  matchTime: 0,
+  finalDuel: null,
 };
 
 const LONG_PRESS_MS = 350;
@@ -1246,6 +1250,11 @@ export default function App() {
                 refreshUi();
                 beep(500);
               }}
+              onProposeDuel={() => {
+                sim.proposeFinalDuel();
+                refreshUi();
+                beep(480);
+              }}
             />
           );
           if (!(layout.layout === "side" && layout.phone)) return hud;
@@ -1563,6 +1572,22 @@ export default function App() {
                 refreshUi();
                 beep(520);
               });
+            }}
+            onAcceptDuel={() => {
+              sim.acceptFinalDuel();
+              const bodyId = sim.getState().possessedId;
+              if (bodyId != null) {
+                const body = sim.getState().units.find((u) => u.id === bodyId);
+                rendererRef.current?.enterPossess(sim.getPossessYaw(), body?.kind === "trebuchet");
+                grabPointerLock();
+              }
+              refreshUi();
+              beep(520);
+            }}
+            onDeclineDuel={() => {
+              sim.declineFinalDuel();
+              refreshUi();
+              beep(220);
             }}
             onStart={() => {
               if (skirmish.lobby.open || skirmish.lobby.live) return;

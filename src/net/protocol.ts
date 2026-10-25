@@ -44,7 +44,10 @@ export type RemoteOrder =
   | { t: "ability"; team: Team; kind: "rally"; vision?: number }
   | { t: "possess"; team: Team; id: number }
   | { t: "unpossess"; team: Team }
-  | { t: "defend"; team: Team; layer: DefendLayerId | null };
+  | { t: "defend"; team: Team; layer: DefendLayerId | null }
+  | { t: "duelPropose"; team: Team }
+  | { t: "duelAccept"; team: Team }
+  | { t: "duelDecline"; team: Team };
 
 export interface SnapKeep {
   hp: number;
@@ -182,6 +185,16 @@ export interface MatchSnapshot {
   drivenBy?: Record<string, number | null>;
   /** Bridge belt each team is holding. */
   defendLayer?: Record<Team, DefendLayerId | null>;
+  /** Skirmish Final Duel status. */
+  finalDuel?: {
+    phase: "off" | "proposed" | "active";
+    proposedBy: Team | null;
+    lifeYou: "runner" | "ward" | null;
+    lifeFoe: "runner" | "ward" | null;
+    unitYou: number | null;
+    unitFoe: number | null;
+    duelYard: boolean;
+  };
 }
 
 /** Host + guests in a room. Auto-balanced across the two keeps. */
@@ -243,6 +256,9 @@ const ORDER_TYPES = new Set<RemoteOrder["t"]>([
   "possess",
   "unpossess",
   "defend",
+  "duelPropose",
+  "duelAccept",
+  "duelDecline",
 ]);
 
 export function createRoomId() {

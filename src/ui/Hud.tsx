@@ -11,9 +11,10 @@ interface HudProps {
   onSpeed: () => void;
   onSound: () => void;
   onRush: () => void;
+  onProposeDuel?: () => void;
 }
 
-export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound, onRush }: HudProps) {
+export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound, onRush, onProposeDuel }: HudProps) {
   const xpPct = ui.keepXpPct;
   const phaseLabel =
     ui.wavePhase === "build"
@@ -40,6 +41,9 @@ export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound
           <div className="stat">
             <span className="label">KILLS</span>
             <span className="value">{ui.arenaKills}</span>
+            <span className="phase-tag">
+              {ui.arenaProgress}/{ui.arenaNeed} rung
+            </span>
           </div>
           <div className="stat">
             <span className="label">ALIVE</span>
@@ -190,6 +194,22 @@ export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound
               Rush +18g
             </span>
           </button>
+        )}
+        {ui.finalDuel?.canPropose && onProposeDuel && (
+          <button type="button" className="rush-btn" onClick={onProposeDuel}>
+            <span className="full">Final Duel</span>
+            <span className="short" aria-hidden>
+              Duel
+            </span>
+          </button>
+        )}
+        {ui.finalDuel?.phase === "proposed" && ui.finalDuel.proposedBy === ui.localTeam && (
+          <span className="phase-tag muted">Duel pending…</span>
+        )}
+        {ui.finalDuel?.phase === "active" && (
+          <span className="phase-tag">
+            Duel · you {ui.finalDuel.youLife ?? "out"} · foe {ui.finalDuel.foeLife ?? "out"}
+          </span>
         )}
       </div>
     </div>
