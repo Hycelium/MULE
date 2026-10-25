@@ -81,8 +81,11 @@ export interface Unit {
   arenaRungProgress?: number;
   /** Last unit that damaged this body (arena kill credit). */
   lastHitBy?: number;
-  /** Mesh yaw (Three.js Y): faces movement / look. */
-  facingYaw?: number;
+  /**
+   * Look / travel yaw while driven (possess / Final Duel / arena).
+   * Synced over skirmish so peers see turn-in-place; cleared when undriven.
+   */
+  facing?: number;
 }
 
 /** First-person body the local player is driving, or none. */
@@ -203,8 +206,6 @@ export interface Villager {
   carryingGold: number;
   carryingWood: number;
   attackTimer: number;
-  /** Mesh yaw (Three.js Y): faces movement / fight target. */
-  facingYaw?: number;
 }
 
 export interface FloatingText {

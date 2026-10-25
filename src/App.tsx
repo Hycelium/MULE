@@ -1326,69 +1326,43 @@ export default function App() {
           {ui.possessed && (
             <div className={`fps-hud${ui.possessed.kind === "trebuchet" ? " treb-hud" : ""}`}>
               <span className="fps-crosshair" aria-hidden />
-              <div className="fps-vitals" aria-label={`${ui.possessed.label} vitals`}>
-                <div className="fps-vital">
-                  <span className="fps-vital-label">HP</span>
-                  <div className="fps-vital-bar hp">
+              <div className="fps-top-bars" aria-label="Health and power">
+                <div className="fps-stat-bar hp">
+                  <span className="fps-stat-label">
+                    {ui.possessed.label} · {ui.possessed.hp}/{Math.ceil(ui.possessed.maxHp)}
+                  </span>
+                  <i style={{ width: `${Math.round(Math.min(1, ui.possessed.hp / Math.max(1, ui.possessed.maxHp)) * 100)}%` }} />
+                </div>
+                {ui.possessed.kind === "trebuchet" ? (
+                  <div className="fps-stat-bar power">
+                    <span className="fps-stat-label">
+                      {ui.possessed.aimLabel
+                        ? ui.possessed.aimLabel
+                        : ui.possessed.charge >= 1
+                          ? "Loose!"
+                          : "Wind"}
+                    </span>
+                    <i style={{ width: `${Math.round(Math.min(1, ui.possessed.charge) * 100)}%` }} />
+                  </div>
+                ) : (
+                  <div className="fps-stat-bar power">
+                    <span className="fps-stat-label">
+                      Vision {Math.min(ui.possessed.visionMax, Math.floor(ui.possessed.visionScore))}/
+                      {ui.possessed.visionMax}
+                      {ui.possessed.canRally
+                        ? ui.possessed.rallyReady
+                          ? " · Rally ready"
+                          : ` · Rally ${Math.ceil(ui.possessed.rallyCooldown ?? 0)}s`
+                        : ""}
+                    </span>
                     <i
                       style={{
                         width: `${Math.round(
-                          Math.max(0, Math.min(1, ui.possessed.hp / Math.max(1, ui.possessed.maxHp))) * 100,
+                          Math.min(1, ui.possessed.visionScore / Math.max(1, ui.possessed.visionMax)) * 100,
                         )}%`,
                       }}
                     />
                   </div>
-                  <em>
-                    {ui.possessed.hp}/{Math.ceil(ui.possessed.maxHp)}
-                  </em>
-                </div>
-                {ui.possessed.kind === "trebuchet" ? (
-                  <div className="fps-vital">
-                    <span className="fps-vital-label">WIND</span>
-                    <div className="fps-vital-bar power">
-                      <i style={{ width: `${Math.round(Math.min(1, ui.possessed.charge) * 100)}%` }} />
-                    </div>
-                    <em>{ui.possessed.charge >= 1 ? "Loose" : Math.round(ui.possessed.charge * 100)}</em>
-                  </div>
-                ) : (
-                  <div className="fps-vital">
-                    <span className="fps-vital-label">VISION</span>
-                    <div className="fps-vital-bar power">
-                      <i
-                        style={{
-                          width: `${Math.round(
-                            Math.max(
-                              0,
-                              Math.min(1, ui.possessed.visionScore / Math.max(1, ui.possessed.visionMax)),
-                            ) * 100,
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                    <em>
-                      {Math.min(ui.possessed.visionMax, Math.floor(ui.possessed.visionScore))}/
-                      {ui.possessed.visionMax}
-                    </em>
-                  </div>
-                )}
-                {!layout.phone && (
-                  <p className="fps-vital-hint">
-                    {ui.possessed.label}
-                    {ui.possessed.kind === "trebuchet"
-                      ? ui.possessed.aimLabel
-                        ? ` · ${ui.possessed.aimLabel}`
-                        : " · look at a tower"
-                      : layout.fpsTouch
-                        ? " · stick · look · Fire"
-                        : ui.possessed.visionScore <= 0
-                          ? " · kill looks out"
-                          : " · wheel zooms"}
-                    {ui.possessed.canRally
-                      ? ui.possessed.rallyReady
-                        ? " · Q Rally"
-                        : ` · Rally ${Math.ceil(ui.possessed.rallyCooldown ?? 0)}s`
-                      : ""}
-                  </p>
                 )}
               </div>
               {layout.fpsTouch ? (

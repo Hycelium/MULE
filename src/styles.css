@@ -331,76 +331,57 @@ button:disabled {
   margin-top: -1px;
 }
 
-.fps-vitals {
+.fps-top-bars {
   position: absolute;
   left: 50%;
-  top: max(12px, env(safe-area-inset-top, 0px));
+  top: max(10px, env(safe-area-inset-top, 0px));
   transform: translateX(-50%);
-  width: min(440px, 94%);
-  z-index: 12;
+  width: min(420px, 92%);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: rgba(10, 8, 6, 0.88);
-  border: 1px solid rgba(201, 164, 90, 0.65);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 2;
   pointer-events: none;
 }
 
-.fps-vital {
-  display: grid;
-  grid-template-columns: 52px 1fr auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.fps-vital-label {
-  font: 700 10px/1 "Trebuchet MS", sans-serif;
-  letter-spacing: 0.08em;
-  color: #d8c49a;
-}
-
-.fps-vital-bar {
-  height: 12px;
+.fps-stat-bar {
+  position: relative;
+  height: 18px;
   border-radius: 999px;
-  background: rgba(30, 22, 16, 0.9);
-  border: 1px solid rgba(120, 90, 50, 0.55);
+  background: rgba(12, 8, 6, 0.78);
+  border: 1px solid rgba(201, 164, 90, 0.65);
   overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
-.fps-vital-bar i {
+.fps-stat-bar i {
   display: block;
   height: 100%;
   transition: width 80ms linear;
 }
 
-.fps-vital-bar.hp i {
-  background: linear-gradient(90deg, #7a2222, #e06060);
+.fps-stat-bar.hp i {
+  background: linear-gradient(90deg, #6a2020, #e07060);
 }
 
-.fps-vital-bar.power i {
+.fps-stat-bar.power i {
   background: linear-gradient(90deg, #8a5a28, #e8c46a);
 }
 
-.fps-vital em {
+.fps-stat-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  color: #f8ecd0;
   font: 700 11px/1 "Trebuchet MS", sans-serif;
-  color: #f3e2c0;
-  font-style: normal;
-  min-width: 3.2em;
-  text-align: right;
-}
-
-.fps-vital-hint {
-  margin: 2px 0 0;
-  font: 600 11px/1.2 "Trebuchet MS", sans-serif;
-  color: #cbb892;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
 }
 
 .fps-banner {

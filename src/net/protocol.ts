@@ -74,7 +74,8 @@ export interface SnapUnit {
   siegeTimer?: number;
   rallyCooldown?: number;
   rallyBuffTimer?: number;
-  facingYaw?: number;
+  /** Driven look yaw (radians). Present while a player is in the body. */
+  facing?: number;
 }
 
 export interface SnapVillager {
@@ -97,7 +98,6 @@ export interface SnapVillager {
   toB?: boolean;
   forced?: boolean;
   attackTimer: number;
-  facingYaw?: number;
 }
 
 export interface SnapBuilding {
