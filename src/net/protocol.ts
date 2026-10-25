@@ -74,6 +74,7 @@ export interface SnapUnit {
   siegeTimer?: number;
   rallyCooldown?: number;
   rallyBuffTimer?: number;
+  facingYaw?: number;
 }
 
 export interface SnapVillager {

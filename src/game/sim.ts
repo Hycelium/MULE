@@ -3480,6 +3480,9 @@ export class GameSim {
   }
 
   private fightMilitary(u: Unit, target: Unit | Villager, team: Team, dt: number) {
+    const aimX = target.pos.x - u.pos.x;
+    const aimY = target.pos.y - u.pos.y;
+    if (Math.hypot(aimX, aimY) > 0.01) u.facingYaw = Math.atan2(aimX, aimY);
     const contact = u.kind === "archer" ? ARCHER_RANGE : 18;
     if (dist(u.pos, target.pos) > contact) {
       moveTowards(u.pos, target.pos, u.speed, dt);
@@ -3544,6 +3547,7 @@ export class GameSim {
         u.rallyPoint = undefined;
         u.engageFrom = undefined;
         u.targetUnitId = undefined;
+        u.facingYaw = Math.PI - yaw;
         return;
       }
     }
@@ -3574,6 +3578,8 @@ export class GameSim {
     u.rallyPoint = undefined;
     u.engageFrom = undefined;
     u.targetUnitId = undefined;
+    // Match FPS look: mesh faces the same way the camera / stick aims.
+    u.facingYaw = Math.PI - yaw;
   }
 
   private updateUnitMovementAndMelee(dt: number, team: Team) {
@@ -4104,6 +4110,9 @@ export class GameSim {
       const ranged = u.kind === "archer";
       const reach = ranged ? ARCHER_RANGE : 20;
       const gap = dist(u.pos, target.pos);
+      const aimX = target.pos.x - u.pos.x;
+      const aimY = target.pos.y - u.pos.y;
+      if (Math.hypot(aimX, aimY) > 0.01) u.facingYaw = Math.atan2(aimX, aimY);
       if (gap > reach * 0.85) {
         moveTowards(u.pos, target.pos, u.speed, dt);
         clampToArena(u.pos);
@@ -5246,6 +5255,7 @@ export class GameSim {
         siegeTimer: u.siegeTimer,
         rallyCooldown: u.rallyCooldown,
         rallyBuffTimer: u.rallyBuffTimer,
+        facingYaw: u.facingYaw,
       })),
       villagers: s.villagers.map((v) => ({
         id: v.id,
@@ -5548,6 +5558,7 @@ export class GameSim {
         siegeTimer: u.siegeTimer,
         rallyCooldown: u.rallyCooldown,
         rallyBuffTimer: u.rallyBuffTimer,
+        facingYaw: u.facingYaw,
       });
     }
     s.villagers = [];

@@ -81,6 +81,8 @@ export interface Unit {
   arenaRungProgress?: number;
   /** Last unit that damaged this body (arena kill credit). */
   lastHitBy?: number;
+  /** Mesh yaw (Three.js Y): faces movement / look. */
+  facingYaw?: number;
 }
 
 /** First-person body the local player is driving, or none. */

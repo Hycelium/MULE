@@ -1698,8 +1698,25 @@ export class GameRenderer {
       this.syncPossessMark(obj, u, possessed);
       if (possessed) {
         obj.rotation.y = Math.PI - this.fpsYaw;
+      } else if (u.facingYaw != null && Number.isFinite(u.facingYaw)) {
+        obj.rotation.y = u.facingYaw;
+        const head = this.findUnitHead(obj, u.kind);
+        if (head) head.visible = true;
       } else {
-        obj.rotation.y = u.team === "you" ? Math.PI : 0;
+        // Fall back: face along recent motion, else team march direction.
+        const prev = obj.userData.simPos as { x: number; y: number } | undefined;
+        if (prev) {
+          const dx = u.pos.x - prev.x;
+          const dy = u.pos.y - prev.y;
+          if (dx * dx + dy * dy > 0.08) obj.userData.faceYaw = Math.atan2(dx, dy);
+        }
+        obj.userData.simPos = { x: u.pos.x, y: u.pos.y };
+        obj.rotation.y =
+          typeof obj.userData.faceYaw === "number"
+            ? obj.userData.faceYaw
+            : u.team === "you"
+              ? Math.PI
+              : 0;
         const head = this.findUnitHead(obj, u.kind);
         if (head) head.visible = true;
       }
@@ -1780,7 +1797,9 @@ export class GameRenderer {
       obj.userData.possessNameText = label;
       this.paintNameSprite(name, label, color);
     }
-    this.paintHpSprite(obj.userData.possessBar as THREE.Sprite, u.hp / Math.max(1, u.maxHp), color);
+    const bar = obj.userData.possessBar as THREE.Sprite;
+    // HP / power live in the top FPS vitals strip — keep the world plate for name + ring only.
+    bar.visible = false;
   }
 
   private possessScreenName(u: Unit) {
