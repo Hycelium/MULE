@@ -1000,7 +1000,10 @@ export default function App() {
         id: `defend-${layer.id}`,
         icon: layer.id === "assault" ? "⚔" : layer.id === "keep" ? "🛡" : "🌉",
         label: layer.label,
-        hint: `Concentrate barracks troops — ${layer.label}`,
+        hint:
+          layer.id === "assault"
+            ? "Release hold — troops march and fight normally"
+            : `Concentrate barracks troops — ${layer.label}`,
         active: ui.defendLayer === layer.id,
         disabled: ui.phase !== "running",
         onPress: () => {

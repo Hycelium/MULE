@@ -407,9 +407,19 @@ export class GameSim {
     const troops = this.state.units
       .filter((u) => u.team === team && u.hp > 0 && u.fromBarracks && !this.isPlayerDriven(u))
       .sort((a, b) => a.id - b.id);
+    // Attack: clear hold rallies so barracks troops resume normal lane march / fight AI.
+    if (layer === "assault") {
+      for (const u of troops) {
+        u.rallyPoint = undefined;
+        u.engageFrom = undefined;
+        u.aiHeldForRush = false;
+        u.aiStagingPoint = undefined;
+      }
+      return;
+    }
     // Spread barracks troops across roads so Commands don't pile everyone on one lane.
     this.balanceTroopLanes(troops, lanes);
-    if (layer === "keep" || layer === "assault") {
+    if (layer === "keep") {
       for (const u of troops) {
         u.rallyPoint = defendPointFor(seed, layer, u.lane, u.id, team);
         u.engageFrom = undefined;
@@ -476,8 +486,8 @@ export class GameSim {
 
   private defendDest(u: Unit): Vec2 | null {
     const layer = this.state.defendLayer[u.team];
-    if (!layer || !u.fromBarracks) return null;
-    if (layer === "keep" || layer === "assault") {
+    if (!layer || !u.fromBarracks || layer === "assault") return null;
+    if (layer === "keep") {
       return defendPointFor(this.activeMap.seed, layer, u.lane, u.id, u.team);
     }
     // Stick with the balanced rally already assigned; fall back if missing.
@@ -1928,11 +1938,12 @@ export class GameSim {
       fromBarracks,
       chargeReady: kind === "runner",
       ignoreEnemyCreeps: !fromBarracks,
-      rallyPoint: holdLayer
-        ? defendPointFor(this.activeMap.seed, holdLayer, lane, id, team)
-        : barracks?.rallyPoint
-          ? { ...barracks.rallyPoint }
-          : undefined,
+      rallyPoint:
+        holdLayer && holdLayer !== "assault"
+          ? defendPointFor(this.activeMap.seed, holdLayer, lane, id, team)
+          : !holdLayer && barracks?.rallyPoint
+            ? { ...barracks.rallyPoint }
+            : undefined,
       aiHeldForRush,
       aiStagingPoint: aiHeldForRush
         ? {
