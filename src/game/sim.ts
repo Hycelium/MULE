@@ -2228,41 +2228,106 @@ export class GameSim {
     aim.fire();
   }
 
+  /** Local or remote first-person control — free to leave the road. */
+  private isPlayerDriven(u: Unit) {
+    if (u.id === this.state.possessedId) return true;
+    for (const drive of this.remoteDrivers.values()) {
+      if (drive.body === u.id) return true;
+    }
+    return false;
+  }
+
+  /** Keep AI trebuchets / rams glued to their lane centerline. */
+  private pinSiegeToRoad(u: Unit, team: Team, dt: number) {
+    if (this.isPlayerDriven(u)) return;
+    if (u.kind !== "trebuchet" && u.kind !== "rammer") return;
+    const roadX = lanePathX(this.activeMap.seed, team, u.lane, u.pos.y);
+    const step = Math.min(Math.abs(roadX - u.pos.x), Math.max(u.speed * 1.15, 48) * dt);
+    u.pos.x += Math.sign(roadX - u.pos.x) * step;
+  }
+
+  /** March along the road toward a destination (Y-first), unless a human is driving. */
+  private marchSiegeOnRoad(u: Unit, team: Team, dest: { x: number; y: number }, dt: number) {
+    if (this.isPlayerDriven(u)) {
+      moveTowards(u.pos, dest, u.speed, dt);
+      return;
+    }
+    const dy = dest.y - u.pos.y;
+    if (Math.abs(dy) > 2) {
+      u.pos.y += Math.sign(dy) * Math.min(Math.abs(dy), u.speed * dt);
+    } else {
+      const roadX = lanePathX(this.activeMap.seed, team, u.lane, u.pos.y);
+      const along = { x: roadX, y: dest.y };
+      moveTowards(u.pos, along, u.speed * 0.35, dt);
+    }
+    this.pinSiegeToRoad(u, team, dt);
+  }
+
+  /**
+   * Enemy trebuchet (or ram) on this unit's road — waves and soldiers stop to fight it.
+   */
+  private pickRoadSiegeTarget(u: Unit, team: Team): Unit | undefined {
+    const enemyTeam = this.enemy(team);
+    const seek = u.kind === "archer" ? ARCHER_RANGE : 44;
+    let best: Unit | undefined;
+    let bestD = seek;
+    for (const e of this.state.units) {
+      if (e.hp <= 0 || e.team !== enemyTeam) continue;
+      if (e.kind !== "trebuchet" && e.kind !== "rammer") continue;
+      if (e.lane !== u.lane) continue;
+      const d = dist(u.pos, e.pos);
+      if (d > seek && Math.abs(e.pos.y - u.pos.y) > 52) continue;
+      if (d <= bestD) {
+        best = e;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
   private stepTrebuchet(u: Unit, team: Team, dt: number) {
     if (u.aiHeldForRush && u.aiStagingPoint) {
       this.driveSiegeStance(u, dt, true);
       if (u.siegePhase === "packed" && dist(u.pos, u.aiStagingPoint) > 4) {
-        moveTowards(u.pos, u.aiStagingPoint, u.speed, dt);
+        this.marchSiegeOnRoad(u, team, u.aiStagingPoint, dt);
+      } else {
+        this.pinSiegeToRoad(u, team, dt);
       }
       return;
     }
     if (u.rallyPoint) {
       this.driveSiegeStance(u, dt, true);
       if (u.siegePhase === "packed") {
-        moveTowards(u.pos, u.rallyPoint, u.speed, dt);
+        this.marchSiegeOnRoad(u, team, u.rallyPoint, dt);
         if (dist(u.pos, u.rallyPoint) < 5) u.rallyPoint = undefined;
+      } else {
+        this.pinSiegeToRoad(u, team, dt);
       }
       return;
     }
     const aim = this.pickTrebuchetAim(u);
     if (!aim) {
       this.driveSiegeStance(u, dt, true);
-      if (u.siegePhase !== "packed") return;
+      if (u.siegePhase !== "packed") {
+        this.pinSiegeToRoad(u, team, dt);
+        return;
+      }
       const keep = this.teamKeep(this.enemy(team));
       if (dist(u.pos, keep.pos) > STARTER_GUARD_RANGE + 30) {
-        moveTowards(u.pos, keep.pos, u.speed, dt);
-        const roadX = lanePathX(this.activeMap.seed, team, u.lane, u.pos.y);
-        const lateral = Math.min(Math.abs(roadX - u.pos.x), u.speed * 0.55 * dt);
-        u.pos.x += Math.sign(roadX - u.pos.x) * lateral;
+        this.marchSiegeOnRoad(u, team, keep.pos, dt);
+      } else {
+        this.pinSiegeToRoad(u, team, dt);
       }
       return;
     }
     if (!aim.inRange) {
       this.driveSiegeStance(u, dt, true);
-      if (u.siegePhase === "packed") moveTowards(u.pos, aim.pos, u.speed, dt);
+      if (u.siegePhase === "packed") this.marchSiegeOnRoad(u, team, aim.pos, dt);
+      else this.pinSiegeToRoad(u, team, dt);
       return;
     }
     this.driveSiegeStance(u, dt, false);
+    this.pinSiegeToRoad(u, team, dt);
     if (u.siegePhase === "ready" && u.attackTimer <= 0) this.fireTrebuchet(u, aim);
   }
 
@@ -3070,10 +3135,17 @@ export class GameSim {
       if (u.kind === "runner" && !this.runnerInMelee(u)) u.chargeReady = true;
       const gateY = laneYGate(team);
       const enemies = this.state.units.filter((e) => e.team === enemyTeam && e.lane === u.lane);
+      // Road siege engines block the lane — waves and soldiers stop to break them.
+      const roadSiege = this.pickRoadSiegeTarget(u, team);
+      if (roadSiege && u.kind !== "rammer") {
+        this.fightMilitary(u, roadSiege, team, dt);
+        continue;
+      }
       if (u.fromBarracks) {
         const hostile = this.pickMilitaryHostile(u, team);
         if (hostile) {
           this.fightMilitary(u, hostile, team, dt);
+          if (u.kind === "rammer") this.pinSiegeToRoad(u, team, dt);
           continue;
         }
         if (u.engageFrom && dist(u.pos, u.engageFrom) > 4) {
@@ -3120,8 +3192,15 @@ export class GameSim {
       }
       const meleeTarget = !u.fromBarracks
         ? enemies
-            .filter((e) => dist(e.pos, u.pos) < 18 && e.fromBarracks)
-            .sort((a, b) => dist(a.pos, u.pos) - dist(b.pos, u.pos))[0]
+            .filter(
+              (e) =>
+                dist(e.pos, u.pos) < 22 &&
+                (e.fromBarracks || e.kind === "trebuchet" || e.kind === "rammer"),
+            )
+            .sort((a, b) => {
+              const siege = (x: Unit) => (x.kind === "trebuchet" ? 0 : x.kind === "rammer" ? 1 : 2);
+              return siege(a) - siege(b) || dist(a.pos, u.pos) - dist(b.pos, u.pos);
+            })[0]
         : undefined;
       if (meleeTarget) {
         if (u.attackTimer <= 0) {
@@ -3204,8 +3283,10 @@ export class GameSim {
       u.pos.y += dir * u.speed * dt;
       // Follow the actual curved road instead of marching down a fixed vertical line.
       const roadX = lanePathX(this.activeMap.seed, team, u.lane, u.pos.y);
-      const lateralStep = Math.min(Math.abs(roadX - u.pos.x), u.speed * 0.9 * dt);
+      const lateralPull = u.kind === "rammer" ? 1.2 : 0.9;
+      const lateralStep = Math.min(Math.abs(roadX - u.pos.x), u.speed * lateralPull * dt);
       u.pos.x += Math.sign(roadX - u.pos.x) * lateralStep;
+      if (u.kind === "rammer") this.pinSiegeToRoad(u, team, dt);
     }
   }
 
