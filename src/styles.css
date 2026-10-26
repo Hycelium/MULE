@@ -2051,8 +2051,22 @@ button:disabled {
   margin: 0 auto;
 }
 
+/* Sit under the FPS HP/power strip so Arena / possess toasts don't cover it. */
+.stage.possessed .toasts {
+  top: calc(max(10px, env(safe-area-inset-top, 0px)) + 58px);
+  left: 12px;
+  right: auto;
+  margin: 0;
+  max-width: min(320px, 46vw);
+  z-index: 7;
+}
+
 .stage.sheet-open .toasts {
   right: 76px;
+}
+
+.stage.possessed.sheet-open .toasts {
+  right: auto;
 }
 
 .toast {
@@ -3002,6 +3016,11 @@ button,
 .is-phone .toasts {
   top: 58px;
   right: 12px;
+}
+
+.is-phone .stage.possessed .toasts {
+  top: calc(max(10px, env(safe-area-inset-top, 0px)) + 58px);
+  right: auto;
 }
 
 @media (max-width: 720px) {
