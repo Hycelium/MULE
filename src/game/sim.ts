@@ -3939,7 +3939,8 @@ export class GameSim {
         }
       }
       const u = this.spawnArenaFighter(job.team, job.rung, job.kills, pos, job.isPlayer);
-      u.facing = job.team === "you" ? 0 : Math.PI;
+      // Leave AI facing unset so meshes track travel (same as first spawn). A pinned
+      // lane yaw here reintroduced the "only face north/south" bug after death.
       taken.push(u.pos);
       if (arena.duel && s.finalDuel) {
         s.finalDuel.unitId[job.team] = u.id;
@@ -3951,7 +3952,7 @@ export class GameSim {
             if (this.playerTeams.get(pid) === job.team) {
               drive.body = u.id;
               drive.keys = { w: false, a: false, s: false, d: false };
-              drive.yaw = u.facing ?? (job.team === "you" ? 0 : Math.PI);
+              drive.yaw = job.team === "you" ? 0 : Math.PI;
               drive.strike = false;
             }
           }
