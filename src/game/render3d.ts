@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import {
   BUILD_RANGE,
-  UNIT_DEFS,
   dogRange,
   POSSESS_FOV_TIGHT,
   POSSESS_FOV_WIDE,
@@ -1808,58 +1807,6 @@ export class GameRenderer {
     const bar = obj.userData.possessBar as THREE.Sprite | undefined;
     if (name) name.visible = false;
     if (bar) bar.visible = false;
-  }
-
-  private possessScreenName(u: Unit) {
-    const label = UNIT_DEFS[u.kind]?.label;
-    return label ? `You · ${label}` : "You";
-  }
-
-  private paintNameSprite(sprite: THREE.Sprite, label: string, color: number) {
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 64;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, 256, 64);
-    ctx.font = "700 36px Cinzel, Palatino, serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = "rgba(8, 6, 8, 0.9)";
-    ctx.strokeText(label, 128, 34);
-    ctx.fillStyle = color === 0x2f6dff ? "#d6e6ff" : "#ffd0c8";
-    ctx.fillText(label, 128, 34);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.needsUpdate = true;
-    const mat = sprite.material as THREE.SpriteMaterial;
-    mat.map?.dispose();
-    mat.map = tex;
-    mat.needsUpdate = true;
-  }
-
-  private paintHpSprite(sprite: THREE.Sprite, pct: number, color: number) {
-    let canvas = sprite.userData.canvas as HTMLCanvasElement | undefined;
-    if (!canvas) {
-      canvas = document.createElement("canvas");
-      canvas.width = 128;
-      canvas.height = 12;
-      sprite.userData.canvas = canvas;
-    }
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const filled = Math.max(0, Math.min(1, pct));
-    ctx.clearRect(0, 0, 128, 12);
-    ctx.fillStyle = "rgba(8, 6, 8, 0.72)";
-    ctx.fillRect(0, 2, 128, 8);
-    ctx.fillStyle = color === 0x2f6dff ? "#6aa4ff" : "#ff5a4a";
-    ctx.fillRect(1, 3, Math.max(0, (128 - 2) * filled), 6);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.needsUpdate = true;
-    const mat = sprite.material as THREE.SpriteMaterial;
-    mat.map?.dispose();
-    mat.map = tex;
-    mat.needsUpdate = true;
   }
 
   private syncVillagers(state: GameState) {
