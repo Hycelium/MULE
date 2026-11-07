@@ -1,7 +1,7 @@
 # Levy — Asset Package Index
 
 **Unit:** Levy (peasant conscript, turban, olive tunic, pitchfork)
-**Status:** Spec baseline v1 — documented, not yet implemented
+**Status:** Production briefs in progress — topology v2 and materials v2 done; rig, weapon, animation still v1. Not yet implemented.
 **Last updated:** 2026-11-06
 
 ## Documents
@@ -10,7 +10,7 @@
 |---|---|
 | [levy-art-direction.md](levy-art-direction.md) | Identity, silhouette, value structure, palette, stylization rules |
 | [levy-topology-budgets.md](levy-topology-budgets.md) | Production modeling brief: proportions (m), bind pose, part naming, tri budgets, edge flow, LOD chain, bake source, export checklist, acceptance criteria |
-| [levy-materials-textures.md](levy-materials-textures.md) | UV atlas, texture set, PBR values, team tint, surface/wear, Substance layer stacks |
+| [levy-materials-textures.md](levy-materials-textures.md) | Production materials & texture brief: atlas rects and texel density, seams/mirroring, bake spec, team mask, Three.js material setup, value QA, export checklist, acceptance criteria |
 | [levy-rig-spec.md](levy-rig-spec.md) | Bone hierarchy, control rig, cloth tiers, weighting |
 | [levy-weapon.md](levy-weapon.md) | Pitchfork decision, dimensions, sockets, runtime IK |
 | [levy-animation-guidelines.md](levy-animation-guidelines.md) | Clip list, timing chart, sim sync, triggers, motion principles, retargeting, runtime integration |
@@ -38,6 +38,14 @@
 - Implementation in code (`src/game/models/units.ts` `levy()`, `src/game/assets3d.ts` loader) not started.
 
 - `fitModel` in `src/game/assets3d.ts` measures the whole hierarchy (pitchfork and all LOD meshes). When the Levy GLB is integrated it must fit on `SM_Levy_Body_LOD0` only, or scaling and centering will be wrong.
+- `prep()` in `src/game/assets3d.ts` would clobber the authored PBR on a `levy` key: it sets `roughness` 0.68 and caps `metalness` at 0.08 (both multiply the ORM maps), forces `envMapIntensity` 0.75, sets anisotropy only on `map` outside the `setSharedAnisotropy` set, and falls back to `skinWithColormap` (UV repaint, DoubleSide) if the map fails to load. The `levy` key must be excluded at integration (see levy-materials-textures.md section 7).
+
+### Conflicts from the materials brief (v2) — need a decision
+
+1. **Sleeve brightness:** albedo `#B8B8B8` × team color gives ≈ `#1F4584` / `#781B1B`, darker than today's sleeves (`#2F63B8` / `#A82A2A`). Option: raise the sleeve albedo to near-white so the tint matches `TEAM_CLOTH`.
+2. **No environment map:** `render3d.ts` sets no `scene.environment`, so iron and brass at metallic 0.9 render dark. Options: add a small PMREM environment, or lower metallic for the Levy.
+3. **Texture delivery:** the brief puts textures in separate files next to the GLB (`public/models/levy/`) instead of embedding them. Confirm.
+4. **Palette drift:** the procedural model's colors differ slightly from the doc palette (e.g. tunic `0x7a7a5a` vs `#6E6E4C`). The new asset follows the docs.
 
 ## Codebase anchors
 
