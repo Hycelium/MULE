@@ -13,6 +13,7 @@
 | [levy-materials-textures.md](levy-materials-textures.md) | Production materials & texture brief: atlas rects and texel density, seams/mirroring, bake spec, team mask, Three.js material setup, value QA, export checklist, acceptance criteria |
 | [levy-rig-spec.md](levy-rig-spec.md) | Production rig brief: bone count and table (bind-pose heads, axes), joint limits, control rig, twist bones, skinning, cloth tiers, Three.js runtime, export checklist, acceptance criteria |
 | [levy-weapon.md](levy-weapon.md) | Pitchfork decision, dimensions, sockets, runtime IK |
+| [levy-production-handoff.md](levy-production-handoff.md) | Build checklist, export/gltfpack settings, Three.js integration notes, v1 in-game acceptance |
 | [levy-animation-guidelines.md](levy-animation-guidelines.md) | Clip list, timing chart, sim sync, triggers, motion principles, retargeting, runtime integration |
 
 ## Locked decisions
