@@ -145,6 +145,7 @@ LOD1 and LOD2 reuse LOD0 UVs (edge-loop removal keeps UVs). Faces created by mer
 | Type | `MeshStandardMaterial` (from GLTFLoader) |
 | `roughness` / `metalness` | 1.0 / 1.0 (factors; the ORM G/B channels carry the values) |
 | `envMapIntensity` | 1.0 (Three default, matches unit materials from `unitKit.ts` `M()`) |
+| Environment | Supplied by the scene, not the material: a 64 px sky-gradient PMREM on `scene.environment` with `scene.environmentIntensity` 0.3 (`src/game/skyEnvironment.ts`, set in `render3d.ts`). Medium and high tiers on desktop only; low tier and phones have none, so metals there rely on direct light. Do not bake reflections into albedo to compensate. |
 | `side` | `FrontSide` |
 | `transparent` / `alphaTest` / `depthWrite` | false / 0 / true |
 | `map.colorSpace` | `SRGBColorSpace` |
@@ -181,7 +182,7 @@ Team tint in `onBeforeCompile`: `albedo.rgb = mix(albedo.rgb, albedo.rgb * teamC
 
 **Linen (turban, veil, wrap band, bindings):** 1. Base `#E2D8BE`, roughness 0.82. 2. Wrap overlap AO at 1.4× contrast. 3. Sun bleach (crown only): world-normal +Y mask, `#E6D9B4`. 4. Dust: low-position mask on turban lower band and veil edges, `#CFC6AE`. 5. Brow sweat: hand-painted band, −5% value. 6. Wrap-band lower edge: position mask 0.30–0.315 m, `#5A4A36` at ≤ 40%, grunge breakup; nothing above 0.315 m.
 
-**Sleeves (team-masked wool):** 1. Base `#B8B8B8`, roughness 0.82, wool fill. 2. Elbow wear: curvature-convex, +8% value. 3. Binding-crease grime: AO mask, −12% value. 4. Albedo alpha = 1.0 on sleeve cloth only (bindings = 0), section 6.
+**Sleeves (team-masked wool):** 1. Base `#F0F0F0` (near-white so the tint lands on `TEAM_CLOTH`), roughness 0.82, wool fill. 2. Elbow wear: curvature-convex, +8% value. 3. Binding-crease grime: AO mask, −12% value. 4. Albedo alpha = 1.0 on sleeve cloth only (bindings = 0), section 6.
 
 **Leather (belt, pouch, boots):** 1. Base belt/pouch `#4A3020`, boots `#3E2A1C`, roughness 0.68, leather grain. 2. Edge polish: curvature edge, +12% value, roughness 0.50 (boot cuff ring, toe). 3. Creases: concave, −15% value (boot ankle creases). 4. Boot mud: sole edge and toe solid, splash to ~0.18 m with grunge, `#4A3E2C`, roughness 0.85; dried crust +8% value. **Brass buckle:** base `#8E7440`, metallic 0.9, roughness 0.5; cavity −40%; edge roughness 0.35.
 
@@ -196,7 +197,7 @@ Albedo luma (Rec. 709 weights on sRGB 0–255), measured on the exported BaseCol
 | Material | Target luma | Palette base |
 |---|---|---|
 | Turban, veil, wrap band (whites) | 195–235 (dust band is the floor) | `#E2D8BE` ≈ 216 |
-| Sleeves before tint | 160–200 | `#B8B8B8` = 184 |
+| Sleeves before tint | 215–240 (wear and grime may dip to 200) | `#F0F0F0` = 240; × team color ≈ `TEAM_CLOTH` |
 | Skin | 100–170 (brow AO low end) | `#C89878` ≈ 160 |
 | Ash shaft | 100–135 | `#A87A48` ≈ 128 |
 | Olive tunic (mid) | 80–120 | `#6E6E4C` ≈ 108 |

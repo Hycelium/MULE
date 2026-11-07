@@ -51,7 +51,7 @@ Team-tinted sleeves are the most saturated element and carry the team read.
 |---|---|---|
 | Tunic (olive) | `#6E6E4C` | Chest panel `#64643F`, back patch `#75754F` |
 | Turban / veil / leg wraps | `#E2D8BE` | Sun-yellowed top `#E6D9B4`, dust lower `#CFC6AE` |
-| Sleeves | `#B8B8B8` | Neutral; multiplied by team color at runtime |
+| Sleeves | `#F0F0F0` | Near-white; multiplied by team color at runtime so sleeves match `TEAM_CLOTH` |
 | Team colors | you `#2F63B8`, foe `#A82A2A` | From `TEAM_CLOTH` in code |
 | Trousers | `#4A3E30` | Mostly hidden |
 | Belt / boots | `#4A3020` / `#3E2A1C` | |

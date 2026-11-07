@@ -29,6 +29,10 @@
 | Height | Skull top 1.75 m, turban top 1.77 m (matches the game); 0.13944 m per game unit |
 | Legs | Mid-shin leather boots (to 0.30 m) with a thin white spiral wrap band to 0.363 m (matches the game) |
 | Pitchfork grip | Rear hand 25% from the butt (the procedural game model uses 20%; the new asset uses 25%) |
+| Sleeve tint | Sleeve albedo `#F0F0F0` × team color, so sleeves match today's `TEAM_CLOTH` blue/red |
+| Environment | 64 px sky-gradient PMREM on `scene.environment`, intensity 0.3, medium/high tiers on desktop (`src/game/skyEnvironment.ts`) |
+| Textures | Separate files next to the GLB in `public/models/levy/`, referenced by relative URI |
+| Palette | The new asset follows the doc palette, not the procedural model's slightly different colors |
 | Hands / torso | Hands enlarged to 1.15× (0.125 m grip envelope); underarm narrowed to ≤ 0.40 m so arms don't clip the chest |
 
 ## Open items
@@ -39,13 +43,6 @@
 
 - `fitModel` in `src/game/assets3d.ts` measures the whole hierarchy (pitchfork and all LOD meshes). When the Levy GLB is integrated it must fit on `SM_Levy_Body_LOD0` only, or scaling and centering will be wrong.
 - `prep()` in `src/game/assets3d.ts` would clobber the authored PBR on a `levy` key: it sets `roughness` 0.68 and caps `metalness` at 0.08 (both multiply the ORM maps), forces `envMapIntensity` 0.75, sets anisotropy only on `map` outside the `setSharedAnisotropy` set, and falls back to `skinWithColormap` (UV repaint, DoubleSide) if the map fails to load. The `levy` key must be excluded at integration (see levy-materials-textures.md section 7).
-
-### Conflicts from the materials brief (v2) — need a decision
-
-1. **Sleeve brightness:** albedo `#B8B8B8` × team color gives ≈ `#1F4584` / `#781B1B`, darker than today's sleeves (`#2F63B8` / `#A82A2A`). Option: raise the sleeve albedo to near-white so the tint matches `TEAM_CLOTH`.
-2. **No environment map:** `render3d.ts` sets no `scene.environment`, so iron and brass at metallic 0.9 render dark. Options: add a small PMREM environment, or lower metallic for the Levy.
-3. **Texture delivery:** the brief puts textures in separate files next to the GLB (`public/models/levy/`) instead of embedding them. Confirm.
-4. **Palette drift:** the procedural model's colors differ slightly from the doc palette (e.g. tunic `0x7a7a5a` vs `#6E6E4C`). The new asset follows the docs.
 
 ## Codebase anchors
 
