@@ -1,7 +1,7 @@
 # Levy — Asset Package Index
 
 **Unit:** Levy (peasant conscript, turban, olive tunic, pitchfork)
-**Status:** Production briefs in progress — topology, materials and rig v2 done; weapon and animation still v1. Not yet implemented.
+**Status:** Production briefs in progress — all six docs at v2. Not yet implemented.
 **Last updated:** 2026-11-06
 
 ## Documents

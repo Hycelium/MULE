@@ -1,6 +1,6 @@
 # Levy — Animation Guidelines
 
-**Status:** Baseline v1 · **Depends on:** levy-rig-spec.md, levy-weapon.md · **Used by:** animator, engine integration
+**Status:** Baseline v2 · **Depends on:** levy-rig-spec.md, levy-weapon.md · **Used by:** animator, engine integration
 
 ## Gameplay constraints (from code)
 
@@ -13,7 +13,8 @@
 
 ## Authoring
 
-- 30 fps, Blender, in place; root motion extracted to metadata.
+- 30 fps, Blender, in place: `Root` never moves; vertical bob and lunge travel live on `Hips` translation. Stride/travel distance goes to `levy.anim.json`.
+- Tracks: rotation on all bones, translation on `Hips` only, no scale, no morph weights.
 - Every combat clip starts and ends on the Guard pose so attacks chain without pops.
 - Tine plane roll-locked horizontal in all attacks and blocks.
 
@@ -96,10 +97,47 @@ Frames 15–19  Recovery       ease back to guard; cancel-safe for next windup
 7. **Cloth bake:** simulate only on the locked body animation, bake to chain bones.
 8. **Export:** resample 30 fps, drop constant and scale tracks, compress with `gltfpack -cc` (EXT_meshopt_compression; the loader sets `MeshoptDecoder`). Write events (contact, footplant, cancel window) to `levy.anim.json`.
 
+## Event sidecar (`levy.anim.json`)
+
+```json
+{ "fps": 30,
+  "clips": {
+    "Thrust_High": { "contact": 9, "footplant": [7], "cancelFrom": 15, "travel": 0.35 },
+    "Walk_Carry":  { "speed": 1.4, "stride": 1.49, "footplant": [0, 16] },
+    "Block_Haft":  { "holdFrom": 6, "holdTo": 10 } } }
+```
+
+Every attack has `contact` and `cancelFrom`; every loop has `speed` and `footplant`. Frames are integers at 30 fps.
+
+## Blend table
+
+| From → To | Cross-fade |
+|---|---|
+| Idle ↔ Walk / Jog | 0.20 s |
+| Guard → attack, attack → attack (from `cancelFrom`) | 0.05 s |
+| Attack → Guard (clip end) | 0.00 s (shared pose) |
+| Any → Block / Dodge | 0.08 s |
+| Any → Hit_Heavy / Death | 0.06 s |
+| `Hit_Light_*` | Additive, weight 1, no fade |
+| `UB_*` over locomotion | Weight fade 0.15 s |
+
 ## Runtime integration (Three.js)
+
+- Additive clips: `AnimationUtils.makeClipAdditive(clip, 0)` once at load; play with `blendMode = AdditiveAnimationBlendMode`.
+- `UB_*` clips: filter tracks to `Spine_02` descendants at load (by bone name prefix list), not at runtime.
+- Hit-stop: set the attack action's `timeScale` to 0.05 for 50 ms, then restore the sync rate.
 
 - One GLB: SkinnedMesh + pitchfork under `Weapon_R` + all clips. Clone with `SkeletonUtils.clone`; share `AnimationClip` objects.
 - Mixer update rate: LOD0 every frame, LOD1 30 Hz, LOD2 15 Hz, off-screen accumulate time only.
 - Inflate the bounding sphere (radius 1.6 m from Hips) so lunges aren't frustum-culled.
 - Locomotion: `timeScale = groundSpeed / authoredSpeed`, clamp 0.8–1.25; beyond that cross-fade Walk ↔ Jog.
 - Order per frame: mixer → corrective morphs → springs (LOD0) → left-hand IK (LOD0).
+
+## Acceptance
+
+- [ ] All clips in the clip list present, names exact; frame counts match.
+- [ ] Attack contact on frame 9; sim sync rate ≈ 0.92 lands contact on `hitAt` (±1 frame).
+- [ ] Combat clips start/end on Guard; no pop chaining Thrust_High → Thrust_Low → Sweep.
+- [ ] No foot sliding at 0.8–1.25 timeScale; `Root` static in every clip.
+- [ ] Tine plane horizontal in attacks/blocks; left hand within 1 cm of `Grip_L`.
+- [ ] Sidecar validates: every attack has `contact`/`cancelFrom`, every loop has `speed`/`footplant`.
