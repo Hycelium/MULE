@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 /** Kenney CC0 (kenney.nl) + a few local glTFs. See public/models/kenney/CREDITS.txt */
@@ -422,7 +423,7 @@ export function ensureModelsLoaded(): Promise<void> {
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
     colormap = await loadColormap();
-    const loader = new GLTFLoader();
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     const keys = Object.keys(URLS) as ModelKey[];
     await Promise.all(
       keys.map((key) => {
