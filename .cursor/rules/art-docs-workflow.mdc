@@ -1,0 +1,16 @@
+---
+description: Art/asset work uses docs/art Markdown files as the source of truth; chats are disposable coordinators.
+globs: docs/art/**
+alwaysApply: false
+---
+
+# Art docs workflow
+
+Full process: `docs/art/WORKFLOW.md`.
+
+- Before starting an art/asset task, name the exact `docs/art/**` files needed and read only those. Do not rely on prior chat history.
+- Every completed deliverable is written to `docs/art/<unit>/<unit>-<topic>.md`, standalone, with the header `**Status:** … · **Depends on:** … · **Used by:** …`.
+- When a doc changes, update `docs/art/<unit>/README.md` (locked decisions, open items).
+- Split large tasks: one sub-task → one doc. Keep chat replies short; the doc is the output.
+- After docs change, delegate commit + push to the `github-sync` subagent.
+- Scope: one asset at a time. Confirm scope before starting another unit or environment pieces.
