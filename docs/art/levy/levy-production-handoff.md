@@ -50,11 +50,23 @@ gltfpack -i levy_src.gltf -o public/models/levy/levy.glb -cc -kn -km -af 30
 
 ## 4. Acceptance (v1 in-game)
 
-- [ ] `levy.glb` loads with no console warnings; textures load from external files.
-- [ ] Side by side with the procedural Levy: same height (±2%), feet on the ground, faces the move direction.
-- [ ] Sleeves show `TEAM_CLOTH` blue/red; both teams share one shader program.
-- [ ] Idle, walk, and attack play; contact lands on the hit; death plays once and holds.
-- [ ] Pitchfork stays in hand with the tines horizontal during the thrust.
-- [ ] No skirt/thigh or sleeve/torso clipping in walk or thrust at game camera distance.
-- [ ] 2 draw calls per Levy; a full Levy wave stays within 10% of the procedural Levy's frame time.
-- [ ] LOD0 tris within ±5% of 5,100 body / 350 weapon.
+- [x] `levy.glb` loads with no console warnings; textures load from external files.
+- [x] Side by side with the procedural Levy: same height (±2%), feet on the ground, faces the move direction.
+- [x] Sleeves show `TEAM_CLOTH` blue/red; both teams share one shader program.
+- [ ] Idle, walk, and attack play; contact lands on the hit; death plays once and holds. (Death: N/A in-game, sim removes dead units.)
+- [x] Pitchfork stays in hand with the tines horizontal during the thrust.
+- [ ] No skirt/thigh or sleeve/torso clipping in walk or thrust at game camera distance. (Idle shaft passes through the torso.)
+- [ ] 2 draw calls per Levy; a full Levy wave stays within 10% of the procedural Levy's frame time. (2 draw calls; frame time not measured.)
+- [ ] LOD0 tris within ±5% of 5,100 body / 350 weapon. (Body 5,416 = +6.2%; weapon 348.)
+
+## 5. v1 build result (proxy)
+
+Built by `tools/levy/build_levy.py` (Blender 4.3, headless) → `tools/levy/finalize.mjs` (textures, sidecar, `gltfpack -cc -kn -km -af 30 -tr`). Runtime: `src/game/models/levyGlb.ts`; dev viewer `tools/levy/viewer.html` (side by side, `?mode=idle|walk|attack&cam=front|side|game`).
+
+| Check | Result |
+|---|---|
+| GLB | 102 KB, 2 draw calls, 62 joints, clips `Idle_Guard`, `Walk_Carry`, `Thrust_High`, `Death_Back` |
+| Height (game units) | GLB 12.13–12.49 vs procedural 12.19–12.56 |
+| Contact sync | Thrust at frame 9.25 on every sim hit (cooldown 0.65 s) |
+
+**Deviations:** textures are PNG (not WebP); no LOD1/2; no corrective morphs, cloth bake, or springs (skirt/finger tracks are constant and dropped); bone roll 0 (not the rig-spec roll); geometry and textures are procedural proxies; no face detail; GLB Levies replace procedural ones once `levy.glb` loads.
