@@ -94,7 +94,7 @@ Frames 15–19  Recovery       ease back to guard; cancel-safe for next windup
 5. **Stylize:** push key poses 15–25% further, compress strikes to 2 frames, add the 2-frame contact hold, retime to the chart.
 6. **Curves:** linear strikes, eased anticipation/recovery, overlap offsets per the kinetic chain.
 7. **Cloth bake:** simulate only on the locked body animation, bake to chain bones.
-8. **Export:** resample 30 fps, drop constant and scale tracks, quantize rotations (gltfpack or gltf-transform meshopt). Write events (contact, footplant, cancel window) to `levy.anim.json`.
+8. **Export:** resample 30 fps, drop constant and scale tracks, compress with `gltfpack -cc` (EXT_meshopt_compression; the loader sets `MeshoptDecoder`). Write events (contact, footplant, cancel window) to `levy.anim.json`.
 
 ## Runtime integration (Three.js)
 

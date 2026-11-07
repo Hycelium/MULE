@@ -2,7 +2,7 @@
 
 **Status:** Baseline v2 · **Depends on:** levy-art-direction.md · **Used by:** levy-rig-spec.md, levy-materials-textures.md, levy-weapon.md
 
-Production modeling brief for the Levy body and pitchfork. Preserve the current procedural silhouette (`src/game/models/units.ts` → `human()`, `wrapHead()`, `levy()`, `pitchfork()`), apply only the changes listed in levy-art-direction.md. **Scale:** 1 unit = 1 m. Height 1.75 m (1.85 m to turban top). Runtime `fitModel` rescales.
+Production modeling brief for the Levy body and pitchfork. Preserve the current procedural silhouette (`src/game/models/units.ts` → `human()`, `wrapHead()`, `levy()`, `pitchfork()`), apply only the changes listed in levy-art-direction.md. **Scale:** 1 unit = 1 m. Height 1.75 m to skull top, 1.77 m to turban top (matches the game). Runtime `fitModel` rescales.
 
 ## 1. Proportion sheet (meters)
 
@@ -11,7 +11,8 @@ Scale factor: skull top in-game = 12.55 units (head joint 10.6 + head sphere 1.0
 | Landmark (Y, soles at 0) | In-game units | Meters | Notes |
 |---|---|---|---|
 | Ankle (Foot joint) | 0.65 | 0.091 | |
-| Shoe top / leg-wrap start | — | 0.12 | New (see section 4 note); in-game boot runs to 0.30 |
+| Boot top / leg-wrap start | 2.16 | 0.30 | Mid-shin boots, as in-game |
+| Leg-wrap top | 2.60 | 0.363 | Thin white band, as in-game |
 | Knee (Calf joint) | 3.55 | 0.495 | |
 | Skirt hem (lowest) | 3.90 | 0.544 | 5 cm above knee joint |
 | Crotch (inner thigh contact) | ~6.15 | 0.858 | |
@@ -26,7 +27,7 @@ Scale factor: skull top in-game = 12.55 units (head joint 10.6 + head sphere 1.0
 | Upper lip (veil top edge, front) | ~11.32 | 1.58 | |
 | Turban brow ledge (front) | ~11.71 | 1.633 | Skin brow strip 1.58–1.63 |
 | Skull top | 12.55 | 1.750 | Definition of s |
-| Turban top | 12.71 | 1.772 → **1.85** | Locked target; stack grows 7.8 cm |
+| Turban top | 12.71 | **1.772** | Locked: matches the game |
 
 | Dimension | Meters | Dimension | Meters |
 |---|---|---|---|
@@ -66,9 +67,9 @@ Stylization multipliers (vs. anatomical reference for a 1.75 m adult):
 | `SM_Levy_Body_LOD0/1/2` | Single skinned mesh each; all body parts below merged; one material `M_Levy`; one UV map. |
 | `Levy_Pitchfork` | Empty, bone-parented to `Weapon_R`, at the pitchfork origin. Children: `SM_Levy_Pitchfork_LOD0/1/2`, empties `Grip_L`, `Tip`, `Butt`. |
 | `LP_Levy_<Part>` | Low-poly working parts (source scene only), joined into `SM_Levy_Body_LOD0` before UV and weighting. |
-| `HP_Levy_<Part>` | High-poly sculpt: `Head`, `Turban`, `Veil`, `Tail`, `Tunic`, `Arms`, `Hands`, `Legs`, `Shoes`, `Belt`, `Pitchfork`. |
+| `HP_Levy_<Part>` | High-poly sculpt: `Head`, `Turban`, `Veil`, `Tail`, `Tunic`, `Arms`, `Hands`, `Legs`, `Boots`, `Belt`, `Pitchfork`. |
 
-Merged into the body mesh (separate unwelded shells allowed): head ovoid, turban, veil, turban tail, torso with shoulder rolls, skirt, sleeves and bindings, hands, trousers, leg wraps and wrap tails, shoes, belt, buckle, pouch. Only the pitchfork is separate. Mirrored UV parts (sleeves, trousers/wraps, hands, shoes) are modeled with an X-mirror; seam vertices exactly on X = 0.
+Merged into the body mesh (separate unwelded shells allowed): head ovoid, turban, veil, turban tail, torso with shoulder rolls, skirt, sleeves and bindings, hands, trousers, leg wraps and wrap tails, boots, belt, buckle, pouch. Only the pitchfork is separate. Mirrored UV parts (sleeves, trousers/wraps, hands, boots) are modeled with an X-mirror; seam vertices exactly on X = 0.
 
 ### LOD0 budget (triangles)
 
@@ -79,8 +80,8 @@ Merged into the body mesh (separate unwelded shells allowed): head ovoid, turban
 | Tunic skirt (front split) | 1,100 | 6 vertical columns aligned to skirt chains, 5 rings, 1-loop hem thickness, inner shell on lower 40% only. |
 | Arms + sleeves + bindings | 900 | 3 loops per elbow, 2 per wrist. Bindings are raised loops, not separate meshes. Upper arm 12 sides, forearm 10. |
 | Hands (mitten + thumb) | 300 | Four fingers as one block with 2 knuckle loops for a curl. |
-| Trousers + leg wraps | 700 | 3 loops per knee. Spiral wrap: 4 diagonal loops per shin. Thigh 10 sides, shin 10. |
-| Shoes | 250 | |
+| Trousers + leg wraps | 600 | 3 loops per knee. Wrap band 0.30–0.363 m: 2 diagonal spiral loops. Thigh 10 sides, shin 10. |
+| Boots (mid-shin) | 350 | Shaft to 0.30 m with a turned cuff ring (as in-game); 2 loops at the ankle crease. |
 | Belt, buckle, pouch | 250 | Belt 24 sides × 3 spans (~144), buckle ~30, pouch with flap ~76. |
 | **Total** | **≈ 5,100** | Single material, single `SkinnedMesh` |
 
@@ -95,7 +96,7 @@ Pitchfork LOD0: ~350 tris, separate mesh (section 6).
 | Wrist | 2 on sleeve cuff + 1 on hand | Hand tucks 2 cm into cuff |
 | Hip (thigh root) | 3 | Under the skirt top band |
 | Knee | 3 | Center loop on the joint |
-| Ankle | 2 on leg wrap + 1 on shoe collar | |
+| Ankle | 2 on boot shaft (crease) + 1 at boot heel | Wraps sit above the boot, not at the ankle |
 | Neck | 2 | Fully under veil |
 | Spine | 1 per bone (Spine_01, Spine_02, Chest) + 1 at belt | |
 | Fingers / thumb | 2 knuckle loops / 2 | |
@@ -116,7 +117,7 @@ Pitchfork LOD0: ~350 tris, separate mesh (section 6).
 |---|---|---|
 | Turban tail | `Wrap_Tail_01..03` | Closed flat ribbon from back of the turban, ~0.35 m, 2 quads wide × 9 rows (3 per bone), edge loop at each bone head. Frayed end in texture only. |
 | Veil front | `Veil_Front_01..02` | Chin drape from upper lip to mid-chest; 3 rows per bone; drape tucks ≥ 2 cm under the turban at sides and back. |
-| Leg-wrap tail | `LegWrap_Tail_L/R` | Strip at the wrap top end, outer calf at ~0.42 m, 8–10 cm, 2 × 3 quads, ~20 tris each. |
+| Leg-wrap tail | `LegWrap_Tail_L/R` | Strip at the wrap top end, outer calf at ~0.36 m, 8–10 cm, 2 × 3 quads, ~20 tris each. |
 | Pouch | `Pouch` | Left hip front (≈ X +0.17, Y 0.93, Z +0.08), ~10 × 12.5 × 7 cm with flap; 1 strap loop blended to `Hips`. |
 
 ## 4. Interpenetration and clearance
@@ -128,11 +129,11 @@ Pitchfork LOD0: ~350 tris, separate mesh (section 6).
 | Veil ↔ chest / shoulder rolls | Veil inner ≥ 1 cm off torso, ≥ 1.5 cm over the rolls; lower veil edge rests on the rolls. |
 | Veil ↔ face | Top edge 3–5 mm proud of the head ovoid at the upper lip (1.58 m); no gap visible from the front at eye height. |
 | Turban ↔ head | Turban outer ≥ 1 cm off the skull; inner faces may intersect the ovoid (both 100% `Head`). Front ledge overhangs the brow strip 1.5 cm. |
-| Hands ↔ cuffs, shoes ↔ wraps | Overlap 2 cm; no visible gap at any test pose. |
+| Hands ↔ cuffs, boots ↔ wraps | Overlap 2 cm; no visible gap at any test pose. |
 
-Head is a closed simple ovoid (~120 tris), no nose, eyes, mouth, brows, or ears; it stays closed as a gap backstop. Veil covers from the upper lip down. Delete hidden geometry: no body under clothing (no torso, arm, or leg skin); trouser surface above the crotch inside the skirt top band; skirt band under the belt beyond 1 loop; shoe interiors; turban band faces fully buried in overlaps; belt faces against the tunic.
+Head is a closed simple ovoid (~120 tris), no nose, eyes, mouth, brows, or ears; it stays closed as a gap backstop. Veil covers from the upper lip down. Delete hidden geometry: no body under clothing (no torso, arm, or leg skin); trouser surface above the crotch inside the skirt top band; skirt band under the belt beyond 1 loop; boot interiors; turban band faces fully buried in overlaps; belt faces against the tunic.
 
-Leg wraps run from the shoe top (0.12 m, just above the ankle) to 0.44 m below the knee, per levy-materials-textures.md (mud ankle → 40% of shin). Shoes are low leather shoes with an ankle collar.
+Leather boots run to mid-shin (0.30 m). The white leg wrap is a thin spiral band from the boot top to 0.363 m, as in the game.
 
 ## 5. LOD production
 
@@ -151,8 +152,8 @@ Build LOD1 and LOD2 by edge-loop removal from LOD0 (preserves UVs), never by uns
 | Skirt | 400: inner shell removed; 20 columns (front groups 4, others 3) × 8 spans; 5 rings and split kept; morphs kept | 120: 12 columns × 4 spans; split welded; no chains; weighted to Hips/Thighs |
 | Arms + sleeves | 420: 8 sides; bindings flattened to 1 loop; 3 loops at shoulders and elbows | 140: 6 sides; 1 loop per joint; bindings texture only |
 | Hands | 100: fingers fused; thumb nub | 40: mitten block |
-| Trousers + wraps | 340: spiral loops removed (texture); 3 loops at knees; wrap tails kept | 120: 6 sides; wrap tails removed |
-| Shoes | 120 | 60 |
+| Trousers + wraps | 300: spiral loops removed (texture); 3 loops at knees; wrap tails kept | 100: 6 sides; wrap tails removed |
+| Boots | 160: cuff ring flattened to 1 loop | 80 |
 | Belt, buckle, pouch | 80: buckle merged into belt | 40: pouch merged, weighted to Hips |
 | **Total** | **2,200** | **800** |
 
@@ -183,7 +184,7 @@ Dimensions (levy-weapon.md): 1.85 m overall, shaft 3.2 cm diameter, 8 sides, nat
 - 1–2M tris total.
 - Sculpt only readable forms: folds ≥ 2 cm, wrap overlaps, quilting ridges, hammer facets on tines, shaft grain (2 mm relief).
 - Do not sculpt: pores, face, fabric weave, nails.
-- Bake groups (exploded or by mesh name `<Group>_low` / `<Group>_high`): Head+Turban+Veil+Tail, Tunic, Arms, Hands, Legs, Shoes, Belt, Pitchfork. Prevents skirt-to-thigh and veil-to-chest ray bleed.
+- Bake groups (exploded or by mesh name `<Group>_low` / `<Group>_high`): Head+Turban+Veil+Tail, Tunic, Arms, Hands, Legs, Boots, Belt, Pitchfork. Prevents skirt-to-thigh and veil-to-chest ray bleed.
 
 ## 8. Deformation rules
 
@@ -202,13 +203,13 @@ Dimensions (levy-weapon.md): 1.85 m overall, shaft 3.2 cm diameter, 8 sides, nat
 - [ ] Skinning on; "Include all bone influences" off; weights pruned < 0.05, normalized, ≤ 4 per vertex; no unweighted vertices.
 - [ ] Shape keys on with normals: `Skirt_StrideOpen`, `Skirt_KneeRaise_L`, `Skirt_KneeRaise_R` on LOD0 and LOD1 only; Basis matches bind pose.
 - [ ] Rest pose = bind pose (section 2); control rig and non-deform helpers excluded.
-- [ ] No Draco or meshopt compression (loader in `src/game/assets3d.ts` does not set decoders).
+- [ ] Compress with `gltfpack -cc` (EXT_meshopt_compression). No Draco. The loader in `src/game/assets3d.ts` sets `MeshoptDecoder`.
 - [ ] Names exactly as section 3; one material `M_Levy`; no stray objects, cameras, or lights.
 
 ## 10. Acceptance criteria
 
 - [ ] Tri counts per LOD within ±5% of 5,100 / 2,200 / 800 (body) and 350 / 120 / 40 (weapon); each part within ±10% of its row.
-- [ ] Landmark heights within ±1 cm of section 1; turban top 1.85 m; skull 1.75 m.
+- [ ] Landmark heights within ±1 cm of section 1; turban top 1.77 m; skull 1.75 m.
 - [ ] Silhouette overlay vs. current in-game Levy screenshot at medium distance: turban dome, shoulder rolls, flared knee-length skirt, tapered legs, and pitchfork length match; only listed art-direction changes differ.
 - [ ] No facial features in geometry or texture; veil covers from upper lip down at all test poses and head turns ±60°.
 - [ ] Deformation poses, no skirt/thigh, sleeve/torso, veil/chest, or hand/cuff intersection: lunge (thigh flex 70°, stride open), high thrust (arm above shoulder), sweep (torso twist 45°), block (shaft across chest), knee raise 90° per side with morph at 1.

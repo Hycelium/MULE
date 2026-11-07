@@ -17,14 +17,14 @@ A conscripted farmhand: underequipped, wearing his own clothes with his lord's c
 - Stacked, wound turban dome on a slightly oversized head (1.05×).
 - Rounded, padded shoulder rolls.
 - Knee-length flared tunic skirt with a front split.
-- Tapered legs ending in bright white leg wraps.
+- Tapered legs: mid-shin leather boots topped by a thin bright white leg-wrap band (as in-game).
 - Pitchfork about 1.0× character height.
 
 ## Value structure (medium distance)
 
 1. White turban — brightest value, caps the figure.
 2. Olive tunic — large mid-value mass, broken at the waist by a dark belt.
-3. White leg wraps — repeat the top value and frame the figure.
+3. White leg-wrap bands — repeat the top value above the dark boots and frame the figure.
 
 Team-tinted sleeves are the most saturated element and carry the team read.
 
@@ -43,7 +43,7 @@ Team-tinted sleeves are the most saturated element and carry the team read.
 | Remove beard and all facial features | Face is never readable at camera distance |
 | Add front skirt split | Lunges read clearly |
 | Add back patch | Storytelling at low cost |
-| Leg wraps become spiral bands | Replaces stacked rings with a believable wrap |
+| Leg-wrap band becomes a spiral wrap (same height as in-game) | Replaces stacked rings with a believable wrap |
 
 ## Palette (sRGB albedo, ≤ 240 for PBR safety)
 
@@ -54,9 +54,9 @@ Team-tinted sleeves are the most saturated element and carry the team read.
 | Sleeves | `#B8B8B8` | Neutral; multiplied by team color at runtime |
 | Team colors | you `#2F63B8`, foe `#A82A2A` | From `TEAM_CLOTH` in code |
 | Trousers | `#4A3E30` | Mostly hidden |
-| Belt / shoes | `#4A3020` / `#3E2A1C` | |
+| Belt / boots | `#4A3020` / `#3E2A1C` | |
 | Brass buckle | `#8E7440` | Dulled |
 | Skin | `#C89878` | Hands and brow strip only |
 | Shaft (ash) | `#A87A48` | Grip zones `#8E6638` |
 | Tines (iron) | `#7E8288` | Worn tips `#B4B8BC`, rust `#6A3E22` |
-| Mud | `#4A3E2C` / `#5A4A36` | Hem / leg wraps |
+| Mud | `#4A3E2C` / `#5A4A36` | Hem and boots / leg-wrap lower edge |

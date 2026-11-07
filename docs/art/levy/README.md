@@ -25,7 +25,11 @@
 | Cloth | Baked chain bones (all) + runtime springs (LOD0, nearest 12) + 3 corrective morphs |
 | Attack clip length | 19 frames @ 30 fps, contact frame 9 (fits 0.65 s cooldown) |
 | Blocks / dodges | Presentation-only (sim has no defensive states) |
-| Delivery | One GLB: SkinnedMesh + pitchfork + all clips; `levy.anim.json` event sidecar |
+| Delivery | One GLB: SkinnedMesh + pitchfork + all clips; `levy.anim.json` event sidecar; `gltfpack -cc` meshopt compression (loader sets `MeshoptDecoder`) |
+| Height | Skull top 1.75 m, turban top 1.77 m (matches the game); 0.13944 m per game unit |
+| Legs | Mid-shin leather boots (to 0.30 m) with a thin white spiral wrap band to 0.363 m (matches the game) |
+| Pitchfork grip | Rear hand 25% from the butt (the procedural game model uses 20%; the new asset uses 25%) |
+| Hands / torso | Hands enlarged to 1.15× (0.125 m grip envelope); underarm narrowed to ≤ 0.40 m so arms don't clip the chest |
 
 ## Open items
 
@@ -33,16 +37,7 @@
 - Whether blocks/dodges become real sim mechanics (would change balance and the sim; out of scope for v1).
 - Implementation in code (`src/game/models/units.ts` `levy()`, `src/game/assets3d.ts` loader) not started.
 
-### Conflicts from the modeling brief (v2) — need a decision
-
-Measured against the current in-game Levy at 0.13944 m per game unit. The brief currently follows the docs, not the game.
-
-1. **Turban height:** locked 1.85 m top vs 1.772 m in-game; the wrap stack grows ~8 cm (visible silhouette change).
-2. **Shoes / leg wraps:** in-game boots reach mid-shin (0.30 m) with a thin wrap band; the docs imply low shoes with wraps 0.12–0.44 m (much more white on the legs).
-3. **Pitchfork grip:** in-game rear grip is 20% from the butt; `levy-weapon.md` says 25%.
-4. **Hands / torso:** hands grow to the 1.15× target; the underarm narrows to ≤ 0.40 m so hanging arms stop clipping the chest.
-5. **`fitModel` (code):** measures the whole hierarchy including the pitchfork and all LOD meshes; it must fit on the body LOD0 only or scaling and centering will be wrong.
-6. **Compression:** the modeling brief forbids Draco/meshopt because the loader has no decoders, but `levy-animation-guidelines.md` tells the animator to quantize with meshopt. Either add `MeshoptDecoder` to the loader or limit export to plain quantization.
+- `fitModel` in `src/game/assets3d.ts` measures the whole hierarchy (pitchfork and all LOD meshes). When the Levy GLB is integrated it must fit on `SM_Levy_Body_LOD0` only, or scaling and centering will be wrong.
 
 ## Codebase anchors
 
