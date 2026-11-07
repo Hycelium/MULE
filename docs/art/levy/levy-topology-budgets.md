@@ -118,7 +118,7 @@ Pitchfork LOD0: ~350 tris, separate mesh (section 6).
 | Turban tail | `Wrap_Tail_01..03` | Closed flat ribbon from back of the turban, ~0.35 m, 2 quads wide × 9 rows (3 per bone), edge loop at each bone head. Frayed end in texture only. |
 | Veil front | `Veil_Front_01..02` | Chin drape from upper lip to mid-chest; 3 rows per bone; drape tucks ≥ 2 cm under the turban at sides and back. |
 | Leg-wrap tail | `LegWrap_Tail_L/R` | Strip at the wrap top end, outer calf at ~0.36 m, 8–10 cm, 2 × 3 quads, ~20 tris each. |
-| Pouch | `Pouch` | Left hip front (≈ X +0.17, Y 0.93, Z +0.08), ~10 × 12.5 × 7 cm with flap; 1 strap loop blended to `Hips`. |
+| Pouch | `Pouch` | Left hip front (≈ X +0.17, Y 0.93, Z +0.12; bone head on the outer surface), ~10 × 12.5 × 7 cm with flap; 1 strap loop blended to `Hips`. |
 
 ## 4. Interpenetration and clearance
 
@@ -168,7 +168,7 @@ Dimensions (levy-weapon.md): 1.85 m overall, shaft 3.2 cm diameter, 8 sides, nat
 | Origin | Rear (right-hand) grip, 25% from the butt |
 | Axes | +Y along the shaft toward the tines; tines spread along ±X; tine plane = local XY. Shaft bow lies in the local YZ plane (−Z) so the head stays centered. |
 | Butt / tine roots / tips | Y −0.4625 / +1.0875 / +1.3875 |
-| Empties | `Grip_L` (0, 0.55, 0); `Tip` center tine tip (0, 1.3875, 0); `Butt` (0, −0.4625, 0). +Y along the shaft. |
+| Empties | `Grip_L` (0, 0.555, 0), centered on the 55% grip zone; `Tip` center tine tip (0, 1.3875, 0); `Butt` (0, −0.4625, 0). +Y along the shaft. |
 | Grip polish zones | Y 0 and +0.555 (25% and 55% of length; matches materials doc) |
 
 | Element | LOD0 | LOD1 | LOD2 |
@@ -202,7 +202,7 @@ Dimensions (levy-weapon.md): 1.85 m overall, shaft 3.2 cm diameter, 8 sides, nat
 - [ ] Normals and tangents on; one UV map; vertex colors off.
 - [ ] Skinning on; "Include all bone influences" off; weights pruned < 0.05, normalized, ≤ 4 per vertex; no unweighted vertices.
 - [ ] Shape keys on with normals: `Skirt_StrideOpen`, `Skirt_KneeRaise_L`, `Skirt_KneeRaise_R` on LOD0 and LOD1 only; Basis matches bind pose.
-- [ ] Rest pose = bind pose (section 2); control rig and non-deform helpers excluded.
+- [ ] Rest pose = bind pose (section 2); control rig and non-deform helpers excluded, except `Root` and the `Weapon_R` socket, which are exported (see levy-rig-spec.md).
 - [ ] Compress with `gltfpack -cc` (EXT_meshopt_compression). No Draco. The loader in `src/game/assets3d.ts` sets `MeshoptDecoder`.
 - [ ] Names exactly as section 3; one material `M_Levy`; no stray objects, cameras, or lights.
 

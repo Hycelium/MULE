@@ -1,7 +1,7 @@
 # Levy — Asset Package Index
 
 **Unit:** Levy (peasant conscript, turban, olive tunic, pitchfork)
-**Status:** Production briefs in progress — topology v2 and materials v2 done; rig, weapon, animation still v1. Not yet implemented.
+**Status:** Production briefs in progress — topology, materials and rig v2 done; weapon and animation still v1. Not yet implemented.
 **Last updated:** 2026-11-06
 
 ## Documents
@@ -11,7 +11,7 @@
 | [levy-art-direction.md](levy-art-direction.md) | Identity, silhouette, value structure, palette, stylization rules |
 | [levy-topology-budgets.md](levy-topology-budgets.md) | Production modeling brief: proportions (m), bind pose, part naming, tri budgets, edge flow, LOD chain, bake source, export checklist, acceptance criteria |
 | [levy-materials-textures.md](levy-materials-textures.md) | Production materials & texture brief: atlas rects and texel density, seams/mirroring, bake spec, team mask, Three.js material setup, value QA, export checklist, acceptance criteria |
-| [levy-rig-spec.md](levy-rig-spec.md) | Bone hierarchy, control rig, cloth tiers, weighting |
+| [levy-rig-spec.md](levy-rig-spec.md) | Production rig brief: bone count and table (bind-pose heads, axes), joint limits, control rig, twist bones, skinning, cloth tiers, Three.js runtime, export checklist, acceptance criteria |
 | [levy-weapon.md](levy-weapon.md) | Pitchfork decision, dimensions, sockets, runtime IK |
 | [levy-animation-guidelines.md](levy-animation-guidelines.md) | Clip list, timing chart, sim sync, triggers, motion principles, retargeting, runtime integration |
 
@@ -22,6 +22,7 @@
 | Weapon | Pitchfork, separate mesh under `Weapon_R`, no swapping, tine plane roll-locked horizontal |
 | Face | No facial features or bones; veil covers upper lip down |
 | Sleeves | Team-tinted at runtime through albedo alpha mask |
+| Skeleton | 61 bones (60 deform + `Root`) + `Weapon_R` socket = 62 glTF joints; weapon empties `Grip_L` (+0.555 m), `Tip`, `Butt` |
 | Cloth | Baked chain bones (all) + runtime springs (LOD0, nearest 12) + 3 corrective morphs |
 | Attack clip length | 19 frames @ 30 fps, contact frame 9 (fits 0.65 s cooldown) |
 | Blocks / dodges | Presentation-only (sim has no defensive states) |
@@ -43,6 +44,8 @@
 
 - `fitModel` in `src/game/assets3d.ts` measures the whole hierarchy (pitchfork and all LOD meshes). When the Levy GLB is integrated it must fit on `SM_Levy_Body_LOD0` only, or scaling and centering will be wrong.
 - `prep()` in `src/game/assets3d.ts` would clobber the authored PBR on a `levy` key: it sets `roughness` 0.68 and caps `metalness` at 0.08 (both multiply the ORM maps), forces `envMapIntensity` 0.75, sets anisotropy only on `map` outside the `setSharedAnisotropy` set, and falls back to `skinWithColormap` (UV repaint, DoubleSide) if the map fails to load. The `levy` key must be excluded at integration (see levy-materials-textures.md section 7).
+- `cloneAnimatedModel` in `src/game/assets3d.ts` uses `SkeletonUtils.clone` (and `updateMatrixWorld` before fitting) only for the `horse` key. A `levy` key falls back to `Object3D.clone`, which leaves every clone bound to the template skeleton; it must take the skinned path.
+- `solveArm` in `src/game/models/unitKit.ts` assumes the procedural arm convention (bone along local −Y, elbow bend −X, identity bind rotations). The Levy glTF bones run along +Y with non-identity bind rotations, so left-hand IK to `Grip_L` needs an adapter (levy-rig-spec.md section 9).
 
 ## Codebase anchors
 

@@ -25,7 +25,7 @@ A spear is marginally easier (single tip, roll-invariant). The pitchfork needs o
 | Mesh origin | Rear (right-hand) grip point, 25% from the butt |
 | Local axes | +Y along the shaft toward the tines; tines spread along ±X (tine plane = local XY) |
 | Parent | `Weapon_R` socket at `Hand_R` palm center (child in the GLB) |
-| `Grip_L` empty | +0.55 m along Y (front hand) |
+| `Grip_L` empty | +0.555 m along Y (front hand, center of the 55% grip zone) |
 | `Tip` empty | Center tine tip — trails and hit VFX |
 | `Butt` empty | Shaft end — block-push FX |
 
