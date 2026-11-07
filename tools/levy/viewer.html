@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Levy viewer (dev only)</title>
+    <style>
+      body { margin: 0; background: #222; overflow: hidden; }
+      #hud { position: fixed; left: 8px; top: 8px; color: #eee; font: 12px monospace; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <div id="hud"></div>
+    <script type="module">
+      // Dev server only: /tools/levy/viewer.html?mode=idle|walk|attack&team=you|foe&cam=front|side|game
+      import * as THREE from "three";
+      import { ensureModelsLoaded } from "/src/game/assets3d.ts";
+      import { animateUnit, buildUnitModel } from "/src/game/models/units.ts";
+      import { animateLevyGlb, buildLevyGlb } from "/src/game/models/levyGlb.ts";
+      import { buildSkyEnvironment } from "/src/game/skyEnvironment.ts";
+
+      const q = new URLSearchParams(location.search);
+      const mode = q.get("mode") ?? "attack";
+      const team = q.get("team") ?? "you";
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.55;
+      document.body.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x8aa6b8);
+      scene.environment = buildSkyEnvironment(renderer);
+      scene.environmentIntensity = 0.3;
+      scene.add(new THREE.HemisphereLight(0xfff0e0, 0x6a8a70, 1.35));
+      const sun = new THREE.DirectionalLight(0xfff2d8, 2.35);
+      sun.position.set(20, 40, 25);
+      scene.add(sun);
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0xb8a684 }));
+      ground.rotation.x = -Math.PI / 2;
+      scene.add(ground);
+      const cams = { front: [0, 9, 34], side: [34, 9, 0], game: [0, 70, 70] };
+      const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.5, 500);
+      camera.position.set(...(cams[q.get("cam") ?? "front"] ?? cams.front));
+      camera.lookAt(0, 6.5, 0);
+
+      await ensureModelsLoaded();
+      const proc = buildUnitModel("levy", team);
+      const glb = buildLevyGlb(team);
+      proc.position.x = -7;
+      glb.position.x = 7;
+      scene.add(proc, glb);
+      const hud = document.getElementById("hud");
+      const boxOf = (o) => new THREE.Box3().setFromObject(o, true);
+
+      const CD = 0.65;
+      let t = 0, timer = 0.4, x = 0;
+      let last = performance.now();
+      renderer.setAnimationLoop(() => {
+        const now = performance.now();
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        t += dt;
+        let timerIn = -1;
+        if (mode === "attack") {
+          timer -= dt;
+          if (timer <= 0) timer += CD;
+          timerIn = timer;
+        }
+        if (mode === "walk") x += dt * 10;
+        const input = { x, y: 0, timer: timerIn };
+        animateUnit(proc, t, input);
+        animateLevyGlb(glb, t, input);
+        const a = boxOf(proc), b = boxOf(glb);
+        hud.textContent = `mode ${mode}  procedural h=${a.max.y.toFixed(2)} minY=${a.min.y.toFixed(2)}   glb h=${b.max.y.toFixed(2)} minY=${b.min.y.toFixed(2)}  state=${glb.userData.levyAnim.state}  thrustFrame=${(glb.userData.levyAnim.thrust.time * 30).toFixed(1)}  timer=${timerIn.toFixed(3)}`;
+        if (mode === "attack" && timerIn > CD - dt) console.log("HIT thrustFrame", (glb.userData.levyAnim.thrust.time * 30).toFixed(2));
+        renderer.render(scene, camera);
+      });
+    </script>
+  </body>
+</html>

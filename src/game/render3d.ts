@@ -17,7 +17,8 @@ import {
 import { ARENA_HALF, arenaCameraFrame, buildArenaCourtyardModel } from "./arena";
 import { homeCameraFrame } from "./homeCamera";
 import { mapBounds } from "./map";
-import { cloneModel, ensureModelsLoaded, setSharedAnisotropy } from "./assets3d";
+import { cloneModel, ensureModelsLoaded, hasModel, setSharedAnisotropy } from "./assets3d";
+import { animateLevyGlb, buildLevyGlb } from "./models/levyGlb";
 import { buildSkyEnvironment } from "./skyEnvironment";
 import type { Barricade, Building, GameState, Team, Unit } from "./types";
 import {
@@ -1674,6 +1675,7 @@ export class GameRenderer {
 
   private makeUnit(u: Unit) {
     if (u.kind === "spy") return buildPeonModel(u.team === "you" ? "foe" : "you");
+    if (u.kind === "levy") return buildLevyGlb(u.team) ?? buildUnitModel(u.kind, u.team);
     return buildUnitModel(u.kind, u.team);
   }
 
@@ -1711,7 +1713,8 @@ export class GameRenderer {
       const key = `unit-${u.id}`;
       live.add(key);
       let obj = this.entityMap.get(key);
-      if (obj && obj.userData.unitKind !== u.kind) {
+      const levyUpgrade = u.kind === "levy" && obj != null && !obj.userData.levyAnim && hasModel("levy");
+      if (obj && (obj.userData.unitKind !== u.kind || levyUpgrade)) {
         this.dynamicRoot.remove(obj);
         this.clearAnimation(key);
         this.entityMap.delete(key);
@@ -1752,7 +1755,7 @@ export class GameRenderer {
           attackCooldown: u.attackCooldown,
           charge: possessed ? state.possessCharge : 0,
         });
-      } else {
+      } else if (!animateLevyGlb(obj, state.time, { x: u.pos.x, y: u.pos.y, timer: u.attackTimer })) {
         animateUnit(obj, state.time + u.id * 0.37, { x: u.pos.x, y: u.pos.y, timer: u.attackTimer });
       }
     }

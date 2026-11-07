@@ -1,0 +1,30 @@
+{
+  "fps": 30,
+  "clips": {
+    "Idle_Guard": {
+      "speed": 0,
+      "footplant": [
+        0
+      ]
+    },
+    "Walk_Carry": {
+      "speed": 1.4,
+      "stride": 1.49,
+      "footplant": [
+        0,
+        16
+      ]
+    },
+    "Thrust_High": {
+      "contact": 9,
+      "footplant": [
+        7
+      ],
+      "cancelFrom": 15,
+      "travel": 0.35
+    },
+    "Death_Back": {
+      "holdFrom": 36
+    }
+  }
+}

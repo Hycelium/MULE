@@ -34,7 +34,8 @@ export type ModelKey =
   | "kCharB"
   | "kCharC"
   | "horse"
-  | "knight";
+  | "knight"
+  | "levy";
 
 const asset = (path: string) => `${import.meta.env.BASE_URL}${path}`;
 
@@ -71,7 +72,12 @@ const URLS: Record<ModelKey, string> = {
   // Same file as `hero`, loaded without its KTX2 textures so it does not need a
   // basis transcoder. Team armor is painted on the clone.
   knight: asset("models/player-hero.glb"),
+  levy: asset("models/levy/levy.glb"),
 };
+
+/** Authored PBR assets: keep their materials and skin them with SkeletonUtils. */
+const AUTHORED = new Set<ModelKey>(["levy"]);
+const SKINNED = new Set<ModelKey>(["horse", "levy"]);
 
 interface ModelTemplate {
   root: THREE.Object3D;
@@ -248,7 +254,7 @@ function prep(root: THREE.Object3D, key: ModelKey, cast = true) {
     if (!m.isMesh) return;
     m.castShadow = cast;
     m.receiveShadow = true;
-    if (!m.material) return;
+    if (!m.material || AUTHORED.has(key)) return;
     const mats = Array.isArray(m.material) ? m.material : [m.material];
     for (const mat of mats) {
       // Castle kit is authored double-sided. Forcing FrontSide turns the far
@@ -314,12 +320,17 @@ export function cloneAnimatedModel(
   if (!template) return null;
   // Skinned meshes (the horse) keep the source skeleton if cloned with
   // Object3D.clone, so the mount renders as a speck. SkeletonUtils retargets.
-  const object = key === "horse" ? cloneSkinned(template.root) : template.root.clone(true);
+  const skinned = SKINNED.has(key);
+  const object = skinned ? cloneSkinned(template.root) : template.root.clone(true);
   // The skinned clone's matrices are stale until a full update, and a fit
   // against that box shrinks the horse to a speck.
-  if (key === "horse") object.updateMatrixWorld(true);
+  if (skinned) object.updateMatrixWorld(true);
   if (targetH != null) fitModel(object, targetH);
   return { object, clips: template.clips };
+}
+
+export function hasModel(key: ModelKey) {
+  return cache.has(key);
 }
 
 export function modelsReady() {
