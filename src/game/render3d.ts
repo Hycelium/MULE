@@ -18,6 +18,7 @@ import { ARENA_HALF, arenaCameraFrame, buildArenaCourtyardModel } from "./arena"
 import { homeCameraFrame } from "./homeCamera";
 import { mapBounds } from "./map";
 import { cloneModel, ensureModelsLoaded, setSharedAnisotropy } from "./assets3d";
+import { buildSkyEnvironment } from "./skyEnvironment";
 import type { Barricade, Building, GameState, Team, Unit } from "./types";
 import {
   buildScenery,
@@ -185,6 +186,7 @@ export class GameRenderer {
   private torchLights: THREE.PointLight[] = [];
   private sun: THREE.DirectionalLight;
   private hemi: THREE.HemisphereLight;
+  private skyEnv: THREE.Texture | null = null;
   private rangeRing: THREE.Mesh | null = null;
   private floatSprites: { mesh: THREE.Sprite; life: number; id: number }[] = [];
   private floatIdSeen = new Set<number>();
@@ -293,6 +295,9 @@ export class GameRenderer {
     this.scene.add(new THREE.AmbientLight(0xc8d8f0, 0.85));
     // Two extra directional lights push the mobile lit shader over the link limit.
     if (!isMobileGpu()) {
+      // The env map sampler also grows the lit program, so phones skip it too.
+      this.skyEnv = buildSkyEnvironment(this.renderer);
+      this.scene.environmentIntensity = 0.3;
       const fill = new THREE.DirectionalLight(0xb0d0ff, 0.75);
       fill.position.set(-140, 120, -40);
       this.scene.add(fill);
@@ -792,6 +797,7 @@ export class GameRenderer {
       this.sun.shadow.map = null;
     }
     this.scene.fog = profile.fog ? new THREE.FogExp2(0x8eb4d0, 0.00055) : null;
+    this.scene.environment = tier === "low" ? null : this.skyEnv;
     // Point lights are folded into the lit program of every nearby mesh. On a phone
     // that variant fails, which hides keeps, mines, and camps while the road stays up.
     for (const light of this.torchLights) light.visible = profile.pointLights && !isMobileGpu();
@@ -2056,6 +2062,7 @@ export class GameRenderer {
   }
 
   dispose() {
+    this.skyEnv?.dispose();
     this.renderer.dispose();
   }
 }
