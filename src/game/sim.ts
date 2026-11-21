@@ -128,7 +128,16 @@ import {
   duelRung,
   promoteRung,
 } from "./arena";
-import { foeBrainStats, notifyAiMatchEnd, notifyAiMatchStart, runAiTurn } from "./ai";
+import { doctrineStanceOf, foeBrainStats, notifyAiMatchEnd, notifyAiMatchStart, runAiTurn } from "./ai";
+import { bestSelfPlayStyle, type AiStyle } from "./selfPlayBook";
+import { doctrineProfileForLanes, doctrineTune as savedDoctrineTune, type DoctrineTune } from "./doctrineTune";
+import type { ResourceBias } from "./doctrineAdapt";
+import {
+  computeSquadFormation,
+  computeWaveMarchTarget,
+  separateFriendlyUnits,
+} from "./formation";
+import { saveHumanLog, type HumanBuildStep, type MatchTimelinePoint } from "./matchLog";
 import {
   awardMatchXp,
   bumpScoutSalt,
@@ -207,7 +216,36 @@ export class GameSim {
   private nextId = 1;
   private state: GameState;
   private aiTimer = 0;
-  private aiRushDeadline = 0;
+  private aiRushDeadline: Record<Team, number> = { you: 0, foe: 0 };
+  /** Both keeps are CPU. Used by the headless self-play script. */
+  private bothCpu = false;
+  private cpuStyle: Record<Team, AiStyle> = { you: "reactive", foe: bestSelfPlayStyle() };
+  private doctrineTune: Record<Team, DoctrineTune> = {
+    you: { ...savedDoctrineTune },
+    foe: { ...savedDoctrineTune },
+  };
+  private customDoctrineTune: Record<Team, boolean> = { you: false, foe: false };
+  private humanLog: {
+    active: boolean;
+    nextSampleAt: number;
+    buildOrder: HumanBuildStep[];
+    trained: Partial<Record<TrainKind | "peon", number>>;
+    upgrades: { towerDamage: number; towerRate: number; barracksDamage: number; barracksRate: number };
+    maxArmy: number;
+    maxPeons: number;
+    firstCrossSec: number | null;
+    timeline: MatchTimelinePoint[];
+  } = {
+    active: false,
+    nextSampleAt: 30,
+    buildOrder: [],
+    trained: {},
+    upgrades: { towerDamage: 0, towerRate: 0, barracksDamage: 0, barracksRate: 0 },
+    maxArmy: 0,
+    maxPeons: 0,
+    firstCrossSec: null,
+    timeline: [],
+  };
   private activeMap: MapDef;
   private controlGroups = new Map<number, number[]>();
   private matchMode: "ai" | "pvp" | "arena" = "ai";
@@ -407,8 +445,12 @@ export class GameSim {
   private applyDefendLayer(team: Team, layer: DefendLayerId | null) {
     const s = this.state;
     if (layer) {
-      const ok = defendLayerOptions(this.activeMap.seed).some((o) => o.id === layer);
-      if (!ok) return;
+      const opts = defendLayerOptions(this.activeMap.seed);
+      if (!opts.some((o) => o.id === layer)) {
+        if (layer === "mid" && opts.some((o) => o.id === "home")) layer = "home";
+        else if ((layer === "home" || layer === "mid") && opts.some((o) => o.id === "keep")) layer = "keep";
+        else return;
+      }
     }
     s.defendLayer[team] = layer;
     if (team === this.localTeam) {
@@ -421,7 +463,42 @@ export class GameSim {
     if (layer) this.assignDefendRallies(team, layer);
   }
 
-  private assignDefendRallies(team: Team, layer: DefendLayerId) {
+  /** Nearest screen units sit on empty enemy tower pads so they cannot be rebuilt. */
+  private suppressTowerPads(team: Team, troops: Unit[]) {
+    const guards = this.doctrineTune[team].padGuards;
+    if (guards <= 0) return;
+    const enemy = this.enemyOf(team);
+    const occupied = new Set(
+      this.state.buildings.filter((b) => b.team === enemy && b.hp > 0 && b.padId).map((b) => b.padId),
+    );
+    const open = this.getPads(enemy).filter((p) => p.zone === "combat" && !occupied.has(p.id));
+    const pool = troops.filter((u) => u.kind === "ward" || u.kind === "levy" || u.kind === "archer");
+    const maxAssigned = Math.floor(pool.length * 0.45);
+    const taken = new Set<number>();
+    let assigned = 0;
+    for (const pad of open) {
+      for (let n = 0; n < guards && assigned < maxAssigned; n++) {
+        let best: Unit | undefined;
+        let bestD = Infinity;
+        for (const u of pool) {
+          if (taken.has(u.id)) continue;
+          const d = dist(u.pos, pad.pos);
+          if (d < bestD) {
+            bestD = d;
+            best = u;
+          }
+        }
+        if (!best) break;
+        taken.add(best.id);
+        assigned++;
+        best.rallyPoint = { ...pad.pos };
+        best.engageFrom = undefined;
+        best.aiHeldForRush = false;
+      }
+    }
+  }
+
+  private assignDefendRallies(team: Team, layer: DefendLayerId, preserveEngaged = false) {
     const seed = this.activeMap.seed;
     const lanes = mapLanes(seed);
     const troops = this.state.units
@@ -434,12 +511,61 @@ export class GameSim {
           !this.isPlayerDriven(u),
       )
       .sort((a, b) => a.id - b.id);
-    // Trebuchets ignore hold commands and keep rolling up the road.
-    for (const u of this.state.units) {
-      if (u.team !== team || u.kind !== "trebuchet" || this.isPlayerDriven(u)) continue;
-      u.rallyPoint = undefined;
+    // Trebs sit behind the bridge line, on their own side, instead of rolling into the towers.
+    const trebBelt = absoluteRiverLayer(
+      layer === "home" || layer === "mid" || layer === "forward" ? layer : "forward",
+      team,
+    );
+    const trebBand = riverLayers(seed).find((b) => b.id === trebBelt);
+    const trebs = this.state.units
+      .filter((u) => u.team === team && u.kind === "trebuchet" && !this.isPlayerDriven(u) && u.hp > 0)
+      .sort((a, b) => a.id - b.id);
+    const trebLaneIdx = new Map<Lane, number>();
+    for (const u of trebs) {
+      const idx = trebLaneIdx.get(u.lane) ?? 0;
+      trebLaneIdx.set(u.lane, idx + 1);
+      const latOffset = idx === 0 ? 0 : idx % 2 === 1 ? -14 : 14;
+      if (layer === "keep") {
+        const pt = defendPointFor(seed, "keep", u.lane, u.id, team);
+        const fwd = team === "you" ? -1 : 1;
+        u.rallyPoint = { x: pt.x + latOffset, y: pt.y - 14 * fwd };
+        u.aiHeldForRush = false;
+        u.aiStagingPoint = undefined;
+        continue;
+      }
+      const starter = this.state.buildings.find(
+        (b) => b.team !== team && b.hp > 0 && b.padId?.includes("keep-guard"),
+      );
+      if (!trebBand && !starter) {
+        u.rallyPoint = undefined;
+        continue;
+      }
+      const bridge = trebBand ? bridgeCrossing(seed, u.lane, trebBand) : null;
+      let y = bridge ? (team === "foe" ? bridge.y - 64 : bridge.y + 64) : starter!.pos.y;
+      const dir = team === "foe" ? -1 : 1;
+      if (starter) y = starter.pos.y;
+      let parked: number | null = null;
+      for (let step = 0; step < 70; step++) {
+        y += dir * 8;
+        const x = lanePathX(seed, team, u.lane, y);
+        if (this.insideEnemyTowerRange({ x, y }, team)) continue;
+        const nearLine = this.state.buildings.some((b) => {
+          if (b.team === team || b.hp <= 0) return false;
+          if (b.kind !== "watchtower" && b.kind !== "ballista" && b.kind !== "catapult") return false;
+          return Math.hypot(x - b.pos.x, y - b.pos.y) <= TREBUCHET_RANGE - 8;
+        });
+        if (nearLine) {
+          parked = y;
+          break;
+        }
+        if (parked == null) parked = y;
+      }
+      if (parked != null) y = parked;
+      u.rallyPoint = { x: lanePathX(seed, team, u.lane, y) + latOffset, y };
+      u.aiHeldForRush = false;
+      u.aiStagingPoint = undefined;
     }
-    // Attack: clear hold rallies so barracks troops resume normal lane march / fight AI.
+    // Attack: clear hold rallies so barracks troops resume cohesive wave march / fight AI.
     if (layer === "assault") {
       for (const u of troops) {
         u.rallyPoint = undefined;
@@ -447,53 +573,115 @@ export class GameSim {
         u.aiHeldForRush = false;
         u.aiStagingPoint = undefined;
       }
+      if (this.cpuStyle[team] === "doctrine") this.suppressTowerPads(team, troops);
       return;
     }
     // Spread barracks troops across roads so Commands don't pile everyone on one lane.
     this.balanceTroopLanes(troops, lanes);
+
+    // Group troops by formation anchor so every bridge/keep/escort pocket fans out
+    // into a layered formation: Levies front, Siege core surrounded by Wards/Runners, Archers back.
+    const groups = new Map<string, { anchor: Vec2; squad: Unit[]; hasNearbySiege: boolean; tightBridge: boolean }>();
+    const addToGroup = (
+      key: string,
+      anchor: Vec2,
+      u: Unit,
+      hasNearbySiege = false,
+      tightBridge = false,
+    ) => {
+      let g = groups.get(key);
+      if (!g) {
+        g = { anchor, squad: [], hasNearbySiege, tightBridge };
+        groups.set(key, g);
+      }
+      if (hasNearbySiege) g.hasNearbySiege = true;
+      g.squad.push(u);
+    };
+
     if (layer === "keep") {
       for (const u of troops) {
-        u.rallyPoint = defendPointFor(seed, layer, u.lane, u.id, team);
-        u.engageFrom = undefined;
+        if (u.kind === "spy") {
+          u.rallyPoint = undefined;
+          continue;
+        }
+        const anchor = defendPointFor(seed, layer, u.lane, 0, team);
+        const laneHasTreb = trebs.some((e) => e.lane === u.lane);
+        addToGroup(`keep:${u.lane}`, anchor, u, laneHasTreb, false);
+      }
+    } else {
+      const belt = absoluteRiverLayer(
+        layer === "home" || layer === "mid" || layer === "forward" ? layer : "mid",
+        team,
+      );
+      const band = riverLayers(seed).find((b) => b.id === belt);
+      const bridges = band
+        ? lanes.map((lane) => bridgeCrossing(seed, lane, band))
+        : [defendPointFor(seed, layer, 0, 0, team)];
+      const load = bridges.map(() => 0);
+      const fwd = team === "you" ? -1 : 1;
+
+      for (const u of troops) {
+        let slot = Math.min(Math.max(0, lanes.indexOf(u.lane)), bridges.length - 1);
+        if (load[slot]! >= BRIDGE_STATION_CAP) {
+          let best = -1;
+          let bestLoad = Infinity;
+          for (let i = 0; i < bridges.length; i++) {
+            if (load[i]! >= BRIDGE_STATION_CAP) continue;
+            if (load[i]! < bestLoad) {
+              bestLoad = load[i]!;
+              best = i;
+            }
+          }
+          slot = best >= 0 ? best : load.indexOf(Math.min(...load));
+        }
+        if (this.cpuStyle[team] === "doctrine" && (u.kind === "rammer" || u.kind === "spy")) {
+          u.rallyPoint = undefined;
+          if (!preserveEngaged) u.engageFrom = undefined;
+          u.aiHeldForRush = false;
+          continue;
+        }
+        // Doctrine escorts form a cohesive protective formation around their lane Trebuchet.
+        if (
+          this.cpuStyle[team] === "doctrine" &&
+          (u.kind === "levy" || u.kind === "ward" || u.kind === "archer" || u.kind === "runner" || u.kind === "templar")
+        ) {
+          const treb = trebs.find((e) => e.lane === u.lane) ?? trebs[0];
+          if (treb) {
+            const gap = Math.round(this.doctrineTune[team].escortGap * 0.5);
+            const anchorY = treb.pos.y + gap * fwd;
+            const anchor = { x: lanePathX(seed, team, treb.lane, anchorY), y: anchorY };
+            addToGroup(`treb:${treb.id}`, anchor, u, true, false);
+            continue;
+          }
+        }
+        if (load[slot]! >= BRIDGE_STATION_CAP) {
+          const anchor = defendPointFor(seed, "keep", u.lane, 0, team);
+          addToGroup(`keep:${u.lane}`, anchor, u, false, false);
+        } else {
+          load[slot]! += 1;
+          const lane = lanes[Math.min(slot, lanes.length - 1)] ?? u.lane;
+          u.lane = lane;
+          // Anchor slightly on our side of the bridgehead so the formation fans out cleanly.
+          const bPt = bridges[slot]!;
+          const anchor = { x: bPt.x, y: bPt.y - 10 * fwd };
+          const laneHasTreb = trebs.some((e) => e.lane === lane);
+          addToGroup(`bridge:${slot}`, anchor, u, laneHasTreb, true);
+        }
+      }
+    }
+
+    for (const group of groups.values()) {
+      const slots = computeSquadFormation(group.anchor, team, group.squad, {
+        hasNearbySiege: group.hasNearbySiege,
+        tightBridge: group.tightBridge,
+      });
+      for (const u of group.squad) {
+        const pt = slots.get(u.id);
+        if (pt) u.rallyPoint = pt;
+        if (!preserveEngaged) u.engageFrom = undefined;
         u.aiHeldForRush = false;
         u.aiStagingPoint = undefined;
       }
-      return;
-    }
-    const belt = absoluteRiverLayer(
-      layer === "home" || layer === "mid" || layer === "forward" ? layer : "mid",
-      team,
-    );
-    const band = riverLayers(seed).find((b) => b.id === belt);
-    const bridges = band
-      ? lanes.map((lane) => bridgeCrossing(seed, lane, band))
-      : [defendPointFor(seed, layer, 0, 0, team)];
-    const load = bridges.map(() => 0);
-    for (const u of troops) {
-      let slot = Math.min(Math.max(0, lanes.indexOf(u.lane)), bridges.length - 1);
-      if (load[slot]! >= BRIDGE_STATION_CAP) {
-        let best = -1;
-        let bestLoad = Infinity;
-        for (let i = 0; i < bridges.length; i++) {
-          if (load[i]! >= BRIDGE_STATION_CAP) continue;
-          if (load[i]! < bestLoad) {
-            bestLoad = load[i]!;
-            best = i;
-          }
-        }
-        slot = best >= 0 ? best : load.indexOf(Math.min(...load));
-      }
-      if (load[slot]! >= BRIDGE_STATION_CAP) {
-        u.rallyPoint = defendPointFor(seed, "keep", u.lane, u.id, team);
-      } else {
-        load[slot]! += 1;
-        const lane = lanes[Math.min(slot, lanes.length - 1)] ?? u.lane;
-        u.lane = lane;
-        u.rallyPoint = { ...bridges[slot]! };
-      }
-      u.engageFrom = undefined;
-      u.aiHeldForRush = false;
-      u.aiStagingPoint = undefined;
     }
   }
 
@@ -537,6 +725,40 @@ export class GameSim {
 
   setMatchMode(mode: "ai" | "pvp" | "arena") {
     this.matchMode = mode;
+  }
+
+  /** Headless matches: the south keep runs the same commander as the north. */
+  setBothCpu(on: boolean) {
+    this.bothCpu = on;
+  }
+
+  isBothCpu() {
+    return this.bothCpu;
+  }
+
+  setCpuStyle(team: Team, style: AiStyle) {
+    this.cpuStyle[team] = style;
+  }
+
+  setDoctrineTune(tune: Partial<DoctrineTune>, team?: Team) {
+    const apply = (side: Team) => {
+      const base = this.customDoctrineTune[side]
+        ? this.doctrineTune[side]
+        : doctrineProfileForLanes(this.activeMap.lanes);
+      this.doctrineTune[side] = { ...base, ...tune };
+      this.customDoctrineTune[side] = true;
+    };
+    if (team) apply(team);
+    else {
+      apply("you");
+      apply("foe");
+    }
+  }
+
+  getDoctrineTune(team: Team = "foe") {
+    return this.customDoctrineTune[team]
+      ? this.doctrineTune[team]
+      : doctrineProfileForLanes(this.activeMap.lanes);
   }
 
   getMatchMode() {
@@ -769,7 +991,7 @@ export class GameSim {
     this.activeMap = getOrCreateCampaignMap(meta.level, meta.scoutSalt);
     this.nextId = 1;
     this.aiTimer = 0;
-    this.aiRushDeadline = 0;
+    this.aiRushDeadline = { you: 0, foe: 0 };
     this.shownMap = null;
     this.linkDown = false;
     this.poses.clear();
@@ -810,7 +1032,7 @@ export class GameSim {
     this.activeMap = map;
     this.nextId = 1;
     this.aiTimer = 0;
-    this.aiRushDeadline = 0;
+    this.aiRushDeadline = { you: 0, foe: 0 };
     this.shownMap = null;
     this.linkDown = false;
     this.poses.clear();
@@ -862,6 +1084,7 @@ export class GameSim {
       return;
     }
     notifyAiMatchStart();
+    this.resetHumanLog(!this.bothCpu && this.matchMode === "ai" && !this.campaignMission);
     const iq = foeBrainStats().intellect;
     this.addToast(`Build phase — ${FIRST_BUILD}s until wave 1`);
     this.addToast(`Foe intellect ${iq} — learning your patterns`);
@@ -878,7 +1101,7 @@ export class GameSim {
     this.activeMap = map;
     this.nextId = 1;
     this.aiTimer = 0;
-    this.aiRushDeadline = 0;
+    this.aiRushDeadline = { you: 0, foe: 0 };
     this.shownMap = { id: map.id, name: map.name, tagline: map.tagline, seed: map.seed };
     this.linkDown = false;
     this.poses.clear();
@@ -987,7 +1210,7 @@ export class GameSim {
     this.activeMap = map;
     this.nextId = 1;
     this.aiTimer = 0;
-    this.aiRushDeadline = 0;
+    this.aiRushDeadline = { you: 0, foe: 0 };
     this.shownMap = { id: map.id, name: map.name, tagline: map.tagline, seed: map.seed };
     this.poses.clear();
     this.poseSpan = 0.05;
@@ -1958,6 +2181,9 @@ export class GameSim {
     }
     this.spendRes(team, cost);
     keep.peonQueue.push({ timeLeft: PEON_TRAIN_TIME, totalTime: PEON_TRAIN_TIME });
+    if (team === "you" && this.humanLog.active) {
+      this.humanLog.trained.peon = (this.humanLog.trained.peon ?? 0) + 1;
+    }
     this.tell(team, "Peon queued at the keep.");
     return true;
   }
@@ -2035,7 +2261,7 @@ export class GameSim {
       if (this.state.villagers.filter((v) => v.team === team).length >= this.peonCap(team)) continue;
       const idx = this.state.villagers.filter((v) => v.team === team).length;
       const scale = this.combatScale(team);
-      this.state.villagers.push({
+      const peon: Villager = {
         id: this.next(),
         team,
         pos: villagerStart(team, idx % 3),
@@ -2048,8 +2274,29 @@ export class GameSim {
         carryingGold: 0,
         carryingWood: 0,
         attackTimer: 0,
-      });
-      this.tell(team, "Peon ready.");
+      };
+      this.state.villagers.push(peon);
+      // Automatically send newly produced peons straight to work on the best open grove/mine.
+      const teamPeons = this.state.villagers.filter((v) => v.team === team && v.hp > 0);
+      for (const node of this.state.nodes) {
+        if (node.team !== team) continue;
+        node.workers = teamPeons.filter((v) => v.targetNodeId === node.id).length;
+      }
+      const workNode = this.pickWorkNode(team);
+      if (workNode) {
+        workNode.workers += 1;
+        peon.targetNodeId = workNode.id;
+        peon.state = "toNode";
+        if (team === this.localTeam) this.state.firstVillagerAssigned = true;
+        this.tell(
+          team,
+          workNode.kind === "pine"
+            ? "Peon ready — heading to pine grove."
+            : "Peon ready — heading to copper mine.",
+        );
+      } else {
+        this.tell(team, "Peon ready.");
+      }
     }
   }
 
@@ -2144,6 +2391,25 @@ export class GameSim {
       siegeTimer: 0,
     };
     this.state.units.push(u);
+    if (fromBarracks && holdLayer && holdLayer !== "assault") {
+      // Slot newly spawned troops smoothly into the team's active holding formation.
+      this.assignDefendRallies(team, holdLayer, true);
+    } else if (fromBarracks && !holdLayer && barracks?.rallyPoint && u.rallyPoint) {
+      // Spread custom barracks rally points into a tactical formation instead of 1 pixel.
+      const rallied = this.state.units.filter(
+        (x) =>
+          x.team === team &&
+          x.hp > 0 &&
+          x.fromBarracks &&
+          x.rallyPoint &&
+          dist(x.rallyPoint, barracks.rallyPoint!) <= 46,
+      );
+      const slots = computeSquadFormation(barracks.rallyPoint, team, rallied);
+      for (const member of rallied) {
+        const pt = slots.get(member.id);
+        if (pt) member.rallyPoint = pt;
+      }
+    }
   }
 
   /**
@@ -2474,6 +2740,9 @@ export class GameSim {
       s.buildSelection = null;
       s.selectedBuildingId = id;
     }
+    if (team === "you" && this.humanLog.active) {
+      this.humanLog.buildOrder.push({ t: Math.round(s.time), kind, zone: pad.zone });
+    }
     this.tell(team, `${buildingName(kind)} raised.`);
   }
 
@@ -2499,11 +2768,44 @@ export class GameSim {
     b.spent += cost;
     if (kind === "damage") b.damageRank = (rank + 1) as 1 | 2;
     else b.rateRank = (rank + 1) as 1 | 2;
+    if (team === "you" && this.humanLog.active) {
+      if (b.kind === "barracks") {
+        if (kind === "damage") this.humanLog.upgrades.barracksDamage++;
+        else this.humanLog.upgrades.barracksRate++;
+      } else {
+        if (kind === "damage") this.humanLog.upgrades.towerDamage++;
+        else this.humanLog.upgrades.towerRate++;
+      }
+    }
     if (b.kind === "ballista" && kind === "rate") this.tell(team, `Guard dogs rank ${rank + 2} posted.`);
     else this.tell(team, `${kind} rank ${rank + 2} bought.`);
   }
 
+  /** Barracks damage and rate ranks boost troop HP, DPS, and training speed. */
+  aiUpgradeBarracks(team: Team) {
+    const bars = this.state.buildings.filter(
+      (b) => b.team === team && b.kind === "barracks" && (b.damageRank < 2 || b.rateRank < 2),
+    );
+    if (bars.length === 0) return false;
+    bars.sort((a, b) => a.damageRank + a.rateRank - (b.damageRank + b.rateRank));
+    const bar = bars[0]!;
+    const kind: "damage" | "rate" = bar.damageRank <= bar.rateRank ? "damage" : "rate";
+    const before = kind === "damage" ? bar.damageRank : bar.rateRank;
+    this.upgradeBuilding(team, bar.id, kind);
+    return (kind === "damage" ? bar.damageRank : bar.rateRank) > before;
+  }
+
   /** Turn a purple midfield house into a church for 500 gold. */
+  aiConsecrate(team: Team) {
+    const house = this.state.buildings.find(
+      (b) => b.team === team && b.kind === "house" && this.isMidEcoPad(b.padId),
+    );
+    if (!house) return false;
+    const before = this.state.gold[team];
+    this.consecrateHouse(team, house.id);
+    return this.state.buildings.some((b) => b.id === house.id && b.kind === "church") || this.state.gold[team] < before;
+  }
+
   consecrateSelected() {
     const id = this.state.selectedBuildingId;
     if (id == null) return;
@@ -2530,6 +2832,9 @@ export class GameSim {
     b.queue = [];
     b.churchLevyTimer = CHURCH_LEVY_INTERVAL;
     b.churchTemplarTimer = CHURCH_TEMPLAR_INTERVAL;
+    if (team === "you" && this.humanLog.active) {
+      this.humanLog.buildOrder.push({ t: Math.round(s.time), kind: "church", zone: "midEco" });
+    }
     this.tell(team, "Church consecrated — free levies, templars, blessing aura.");
   }
 
@@ -2649,12 +2954,23 @@ export class GameSim {
     }
     let bestB: Building | undefined;
     let bestBd = Infinity;
+    const line = (b: Building) => b.kind === "watchtower" || b.kind === "ballista" || b.kind === "catapult";
     for (const b of this.state.buildings) {
-      if (b.team === u.team || b.hp <= 0 || !this.canTrebuchetTarget(b)) continue;
+      if (b.team === u.team || b.hp <= 0 || !line(b)) continue;
       const d = dist(u.pos, b.pos);
       if (d < bestBd) {
         bestBd = d;
         bestB = b;
+      }
+    }
+    if (!bestB) {
+      for (const b of this.state.buildings) {
+        if (b.team === u.team || b.hp <= 0 || !this.canTrebuchetTarget(b)) continue;
+        const d = dist(u.pos, b.pos);
+        if (d < bestBd) {
+          bestBd = d;
+          bestB = b;
+        }
       }
     }
     let bestBar: Barricade | undefined;
@@ -2667,10 +2983,6 @@ export class GameSim {
         bestBar = b;
       }
     }
-    if (bestEngine && bestEd <= TREBUCHET_RANGE) {
-      const target = bestEngine;
-      return { pos: target.pos, inRange: true, fire: () => this.trebuchetHitUnit(u, target) };
-    }
     if (bestB && bestBd <= TREBUCHET_RANGE) {
       const target = bestB;
       return { pos: target.pos, inRange: true, fire: () => this.trebuchetHitBuilding(u, target) };
@@ -2679,8 +2991,12 @@ export class GameSim {
       const wall = bestBar;
       return { pos: wall.pos, inRange: true, fire: () => this.trebuchetHitBarricade(u, wall) };
     }
-    if (bestEngine) return { pos: bestEngine.pos, inRange: false, fire: () => {} };
     if (bestB) return { pos: bestB.pos, inRange: false, fire: () => {} };
+    if (bestEngine && bestEd <= TREBUCHET_RANGE) {
+      const target = bestEngine;
+      return { pos: target.pos, inRange: true, fire: () => this.trebuchetHitUnit(u, target) };
+    }
+    if (bestEngine) return { pos: bestEngine.pos, inRange: false, fire: () => {} };
     if (bestBar) return { pos: bestBar.pos, inRange: false, fire: () => {} };
     return null;
   }
@@ -2748,6 +3064,21 @@ export class GameSim {
   }
 
   private stepTrebuchet(u: Unit, team: Team, dt: number) {
+    const aimNow = this.pickTrebuchetAim(u);
+    if (aimNow?.inRange && this.insideEnemyTowerRange(u.pos, team)) {
+      this.driveSiegeStance(u, dt, true);
+      const back = u.rallyPoint ?? this.trebRetreatPoint(u, team);
+      if (u.siegePhase === "packed") this.marchSiegeOnRoad(u, team, back, dt);
+      else this.pinSiegeToRoad(u, team, dt);
+      return;
+    }
+    if (aimNow?.inRange) {
+      u.aiHeldForRush = false;
+      this.driveSiegeStance(u, dt, false);
+      this.pinSiegeToRoad(u, team, dt);
+      if (u.siegePhase === "ready" && u.attackTimer <= 0) this.fireTrebuchet(u, aimNow);
+      return;
+    }
     if (u.aiHeldForRush && u.aiStagingPoint) {
       this.driveSiegeStance(u, dt, true);
       if (u.siegePhase === "packed" && dist(u.pos, u.aiStagingPoint) > 4) {
@@ -2759,9 +3090,8 @@ export class GameSim {
     }
     if (u.rallyPoint) {
       this.driveSiegeStance(u, dt, true);
-      if (u.siegePhase === "packed") {
+      if (u.siegePhase === "packed" && dist(u.pos, u.rallyPoint) > 5) {
         this.marchSiegeOnRoad(u, team, u.rallyPoint, dt);
-        if (dist(u.pos, u.rallyPoint) < 5) u.rallyPoint = undefined;
       } else {
         this.pinSiegeToRoad(u, team, dt);
       }
@@ -2794,13 +3124,36 @@ export class GameSim {
     }
     if (!aim.inRange) {
       this.driveSiegeStance(u, dt, true);
-      if (u.siegePhase === "packed") this.marchSiegeOnRoad(u, team, aim.pos, dt);
-      else this.pinSiegeToRoad(u, team, dt);
+      if (u.siegePhase !== "packed") {
+        this.pinSiegeToRoad(u, team, dt);
+        return;
+      }
+      if (this.insideEnemyTowerRange(u.pos, team)) this.marchSiegeOnRoad(u, team, this.trebRetreatPoint(u, team), dt);
+      else this.marchSiegeOnRoad(u, team, aim.pos, dt);
       return;
     }
     this.driveSiegeStance(u, dt, false);
     this.pinSiegeToRoad(u, team, dt);
     if (u.siegePhase === "ready" && u.attackTimer <= 0) this.fireTrebuchet(u, aim);
+  }
+
+  /** True when an enemy tower, ballista, or catapult can hit this point. */
+  private insideEnemyTowerRange(pos: Vec2, team: Team) {
+    for (const b of this.state.buildings) {
+      if (b.team === team || b.hp <= 0) continue;
+      const reach = BUILD_RANGE[b.kind] ?? 0;
+      if (reach <= 0) continue;
+      // The starter tower's 220 guard circle is wider than treb range. Trebs still
+      // shoot it from 190 instead of backing out of that circle.
+      if (dist(pos, b.pos) <= reach + 10) return true;
+    }
+    return false;
+  }
+
+  /** Step back along the road, toward home, until the treb is outside tower range. */
+  private trebRetreatPoint(u: Unit, team: Team) {
+    const back = team === "foe" ? u.pos.y - 36 : u.pos.y + 36;
+    return { x: lanePathX(this.activeMap.seed, team, u.lane, back), y: back };
   }
 
   private pickSpyTrebuchet(u: Unit): Unit | undefined {
@@ -3049,6 +3402,9 @@ export class GameSim {
     this.spendRes(team, cost);
     const trainTime = (def.trainTime ?? 4) * RATE_MULT[b.rateRank];
     b.queue.push({ kind, timeLeft: trainTime, totalTime: trainTime });
+    if (team === "you" && this.humanLog.active) {
+      this.humanLog.trained[kind] = (this.humanLog.trained[kind] ?? 0) + 1;
+    }
     this.tell(team, `${def.label} queued.`);
     return true;
   }
@@ -3635,6 +3991,15 @@ export class GameSim {
         continue;
       }
       if (u.fromBarracks) {
+        if (
+          u.rallyPoint &&
+          this.cpuStyle[u.team] === "doctrine" &&
+          dist(u.pos, u.rallyPoint) > 18 &&
+          this.getPads(this.enemyOf(u.team)).some((p) => p.zone === "combat" && dist(p.pos, u.rallyPoint!) < 8)
+        ) {
+          moveTowards(u.pos, u.rallyPoint, u.speed, dt);
+          continue;
+        }
         const hostile = this.pickMilitaryHostile(u, team);
         if (hostile) {
           this.fightMilitary(u, hostile, team, dt);
@@ -3653,14 +4018,24 @@ export class GameSim {
           }
           continue;
         }
+        const holdingLayer =
+          this.state.defendLayer[u.team] != null && this.state.defendLayer[u.team] !== "assault";
         if (u.rallyPoint) {
-          moveTowards(u.pos, u.rallyPoint, u.speed, dt);
-          if (dist(u.pos, u.rallyPoint) < 5) u.rallyPoint = undefined;
+          if (dist(u.pos, u.rallyPoint) > 3.5) {
+            moveTowards(u.pos, u.rallyPoint, u.speed, dt);
+          } else {
+            const onPad =
+              this.cpuStyle[u.team] === "doctrine" &&
+              this.getPads(this.enemyOf(u.team)).some(
+                (p) => p.zone === "combat" && dist(p.pos, u.rallyPoint!) < 8,
+              );
+            if (!onPad && !holdingLayer) u.rallyPoint = undefined;
+          }
           continue;
         }
         const hold = this.defendDest(u);
-        if (hold && dist(u.pos, hold) > 6) {
-          moveTowards(u.pos, hold, u.speed, dt);
+        if (hold) {
+          if (dist(u.pos, hold) > 5) moveTowards(u.pos, hold, u.speed, dt);
           continue;
         }
       }
@@ -3778,14 +4153,23 @@ export class GameSim {
         continue;
       }
       const dir = team === "you" ? -1 : 1;
-      u.pos.y += dir * u.speed * dt;
-      // Follow the actual curved road instead of marching down a fixed vertical line.
-      const roadX = lanePathX(this.activeMap.seed, team, u.lane, u.pos.y);
-      const lateralPull = u.kind === "rammer" ? 1.2 : 0.9;
-      const lateralStep = Math.min(Math.abs(roadX - u.pos.x), u.speed * lateralPull * dt);
-      u.pos.x += Math.sign(roadX - u.pos.x) * lateralStep;
+      if (u.fromBarracks) {
+        const wave = computeWaveMarchTarget(this.activeMap.seed, u, this.state.units);
+        u.pos.y += dir * u.speed * wave.speedMult * dt;
+        const lateralPull = u.kind === "rammer" ? 1.2 : 0.95;
+        const lateralStep = Math.min(Math.abs(wave.targetX - u.pos.x), u.speed * lateralPull * dt);
+        u.pos.x += Math.sign(wave.targetX - u.pos.x) * lateralStep;
+      } else {
+        u.pos.y += dir * u.speed * dt;
+        // Follow the actual curved road instead of marching down a fixed vertical line.
+        const roadX = lanePathX(this.activeMap.seed, team, u.lane, u.pos.y);
+        const lateralPull = u.kind === "rammer" ? 1.2 : 0.9;
+        const lateralStep = Math.min(Math.abs(roadX - u.pos.x), u.speed * lateralPull * dt);
+        u.pos.x += Math.sign(roadX - u.pos.x) * lateralStep;
+      }
       if (u.kind === "rammer") this.pinSiegeToRoad(u, team, dt);
     }
+    separateFriendlyUnits(this.state.units, dt, this.state.possessedId);
   }
 
   private cleanupDeaths() {
@@ -4462,11 +4846,8 @@ export class GameSim {
         v.timer -= dt;
         if (v.timer <= 0) {
           node.loadsLeft -= 1;
-          const brain = foeBrainStats();
-          const mult =
-            team === "you" || this.matchMode === "pvp"
-              ? gMult
-              : gMult * (1 + Math.min(0.24, brain.games * 0.012));
+          // Fair 1× gather rate for both human and AI teams.
+          const mult = gMult;
           v.carryingGold = Math.round(node.goldPerLoad * mult);
           v.carryingWood = Math.round(node.woodPerLoad * mult);
           v.state = "toKeep";
@@ -4514,6 +4895,7 @@ export class GameSim {
     s.won = won;
     if (this.matchMode === "pvp" || this.matchMode === "arena" || this.state.arena?.duel) return;
     notifyAiMatchEnd(won);
+    this.flushHumanLog(reason, won);
     this.freshHold = false;
     if (won === true && this.campaignMission) {
       const claimed = recordVictory(this.campaignMission.id);
@@ -4534,6 +4916,95 @@ export class GameSim {
         this.addToast(`Keep Level ${s.keepLevel} — new campaign map awaits`);
       }
     }
+  }
+
+  private resetHumanLog(active: boolean) {
+    this.humanLog = {
+      active,
+      nextSampleAt: 30,
+      buildOrder: [],
+      trained: {},
+      upgrades: { towerDamage: 0, towerRate: 0, barracksDamage: 0, barracksRate: 0 },
+      maxArmy: 0,
+      maxPeons: 0,
+      firstCrossSec: null,
+      timeline: [],
+    };
+  }
+
+  private sampleHumanLog() {
+    if (!this.humanLog.active) return;
+    const s = this.state;
+    const youArmy = this.armySlotsUsed("you");
+    const youPeons = this.peonSlotsUsed("you");
+    if (youArmy > this.humanLog.maxArmy) this.humanLog.maxArmy = youArmy;
+    if (youPeons > this.humanLog.maxPeons) this.humanLog.maxPeons = youPeons;
+    if (
+      this.humanLog.firstCrossSec === null &&
+      s.units.some((u) => u.team === "you" && u.fromBarracks && u.hp > 0 && u.pos.y <= WORLD_H * 0.5)
+    ) {
+      this.humanLog.firstCrossSec = Math.round(s.time);
+    }
+    if (s.time < this.humanLog.nextSampleAt) return;
+    this.humanLog.nextSampleAt += 30;
+    const isTower = (b: Building) =>
+      b.hp > 0 && (b.kind === "watchtower" || b.kind === "ballista" || b.kind === "catapult");
+    this.humanLog.timeline.push({
+      t: Math.round(s.time),
+      youHp: Math.round(s.keeps.you.hp),
+      foeHp: Math.round(s.keeps.foe.hp),
+      youArmy,
+      foeArmy: this.armySlotsUsed("foe"),
+      youPeons,
+      foePeons: this.peonSlotsUsed("foe"),
+      youTowers: s.buildings.filter((b) => b.team === "you" && isTower(b)).length,
+      foeTowers: s.buildings.filter((b) => b.team === "foe" && isTower(b)).length,
+      foeTrebs: s.units.filter((u) => u.team === "foe" && u.hp > 0 && u.kind === "trebuchet").length,
+      foeRams: s.units.filter((u) => u.team === "foe" && u.hp > 0 && u.kind === "rammer").length,
+      foeLayer: s.defendLayer.foe,
+      foeStance: doctrineStanceOf("foe"),
+    });
+  }
+
+  private flushHumanLog(reason: string, won: boolean | null) {
+    if (!this.humanLog.active) return;
+    this.humanLog.active = false;
+    const s = this.state;
+    const meta = loadMeta();
+    const now = new Date().toISOString();
+    saveHumanLog({
+      version: 1,
+      id: `match-${now.replace(/[:.]/g, "-")}`,
+      playedAt: now,
+      map: {
+        name: this.activeMap.name,
+        seed: this.activeMap.seed,
+        lanes: this.activeMap.lanes,
+        keepLevel: meta.level,
+        scoutSalt: meta.scoutSalt,
+      },
+      aiStyle: this.cpuStyle.foe,
+      doctrineTune: { ...this.getDoctrineTune("foe") },
+      outcome: {
+        humanWon: won,
+        durationSec: Math.round(s.time),
+        endReason: reason,
+        waves: s.waveIndex,
+        humanKeepHp: Math.round(s.keeps.you.hp),
+        docKeepHp: Math.round(s.keeps.foe.hp),
+        humanSlain: s.stats.you.slain,
+        humanGoldEarned: Math.round(s.stats.you.goldEarned),
+      },
+      humanBuildOrder: this.humanLog.buildOrder,
+      humanTrained: this.humanLog.trained,
+      humanUpgrades: this.humanLog.upgrades,
+      humanPeaks: {
+        maxArmy: this.humanLog.maxArmy,
+        maxPeons: this.humanLog.maxPeons,
+        firstCrossSec: this.humanLog.firstCrossSec,
+      },
+      timeline: this.humanLog.timeline,
+    });
   }
 
   private decayFx(dt: number) {
@@ -4612,8 +5083,12 @@ export class GameSim {
     if (this.matchMode === "ai") {
       this.aiTimer -= dt;
       if (this.aiTimer <= 0) {
-        runAiTurn(this, AI_RESERVE);
-        this.aiPickDefendLayer();
+        runAiTurn(this, AI_RESERVE, "foe", this.cpuStyle.foe);
+        this.aiPickDefendLayer("foe");
+        if (this.bothCpu) {
+          runAiTurn(this, AI_RESERVE, "you", this.cpuStyle.you);
+          this.aiPickDefendLayer("you");
+        }
         const iq = foeBrainStats().intellect;
         this.aiTimer = Math.max(0.72, 1.85 - iq * 0.0115);
       }
@@ -4630,6 +5105,7 @@ export class GameSim {
     this.tickPeonQueues(dt);
     this.updateUnitMovementAndMelee(dt, "you");
     this.updateUnitMovementAndMelee(dt, "foe");
+    this.sampleHumanLog();
     this.cleanupDeaths();
     this.cleanupDeadPeons();
     const livingPeons = new Set(s.villagers.filter((v) => v.team === this.localTeam && v.hp > 0).map((v) => v.id));
@@ -4695,8 +5171,7 @@ export class GameSim {
     return defense;
   }
 
-  placeAiBuilding(kind: BuildingKind, reserve = AI_RESERVE) {
-    const team: Team = "foe";
+  placeAiBuilding(kind: BuildingKind, reserve = AI_RESERVE, team: Team = "foe", zone?: Pad["zone"]) {
     const cost = BUILD_COST[kind];
     if (this.state.gold[team] < cost.gold + reserve) return false;
     if (this.state.wood[team] < cost.wood) return false;
@@ -4707,16 +5182,25 @@ export class GameSim {
     // A pad is worth its weakest covered road; multi-road pads get a small nudge.
     const padNeed = (pad: Pad) =>
       Math.min(...pad.laneCoverage.map((lane) => laneDefense[lane] ?? 0)) - (pad.laneCoverage.length > 1 ? 0.25 : 0);
+    const blocked = (pad: Pad) =>
+      this.state.units.some((u) => u.team !== team && u.hp > 0 && dist(u.pos, pad.pos) < 34);
+    // Symmetric forwardness: higher = closer to midfield for BOTH teams.
+    const forwardness = (pad: Pad) => (team === "foe" ? pad.pos.y : WORLD_H - pad.pos.y);
     const target = pads
-      .filter((p) => !occ.has(p.id) && (kind === "house" ? houseZones.has(p.zone) : p.zone === "combat"))
+      .filter((p) => !occ.has(p.id) && !blocked(p) && (zone ? p.zone === zone : kind === "house" ? houseZones.has(p.zone) : p.zone === "combat"))
       .sort((a, b) => {
         if (kind === "house") {
           // Prefer purple midfield houses for army pop, then yard eco.
           const az = a.zone === "midEco" ? 0 : 1;
           const bz = b.zone === "midEco" ? 0 : 1;
-          return az - bz || a.pos.y - b.pos.y;
+          return az - bz || forwardness(a) - forwardness(b);
         }
-        return padNeed(a) - padNeed(b) || a.pos.y - b.pos.y;
+        if (kind === "barracks") {
+          // Tuck barracks on the safest backline combat pads (leaving forward chokes for towers).
+          return forwardness(a) - forwardness(b) || a.laneCoverage.length - b.laneCoverage.length;
+        }
+        // Towers: cover the weakest road first, prefer multi-lane chokes, then push forward.
+        return padNeed(a) - padNeed(b) || forwardness(b) - forwardness(a);
       })[0];
     if (!target) return false;
     this.spendRes(team, cost);
@@ -4742,19 +5226,28 @@ export class GameSim {
     return true;
   }
 
-  private aiObservedHumanUnits(maxY = 430) {
-    return this.state.units.filter((u) => u.team === "you" && u.pos.y <= maxY);
+  private enemyOf(team: Team): Team {
+    return team === "you" ? "foe" : "you";
   }
 
-  aiBuildDefensiveBarricade() {
+  /** Enemy troops that have crossed toward this keep. Queues stay hidden. */
+  private aiObservedHumanUnits(maxY = 430, team: Team = "foe") {
+    const enemy = this.enemyOf(team);
+    return this.state.units.filter((u) => {
+      if (u.team !== enemy || u.hp <= 0) return false;
+      return team === "foe" ? u.pos.y <= maxY : u.pos.y >= WORLD_H - maxY;
+    });
+  }
+
+  aiBuildDefensiveBarricade(team: Team = "foe") {
     const cost = BUILD_COST.barricade;
-    const existing = this.state.barricades.filter((b) => b.team === "foe");
+    const existing = this.state.barricades.filter((b) => b.team === team);
     const maxBarricades = this.state.waveIndex >= 4 ? 2 : 1;
     if (existing.length >= maxBarricades) return false;
-    if (this.state.gold.foe < cost.gold + 20 || this.state.wood.foe < cost.wood + 30) return false;
-    if (this.aiObservedHumanUnits(205).length > 0) return false;
+    if (this.state.gold[team] < cost.gold + 20 || this.state.wood[team] < cost.wood + 30) return false;
+    if (this.aiObservedHumanUnits(205, team).length > 0) return false;
 
-    const observed = this.aiObservedHumanUnits();
+    const observed = this.aiObservedHumanUnits(430, team);
     const lanePressure = [0, 0, 0];
     for (const unit of observed) {
       lanePressure[unit.lane] += unit.kind === "rammer" || unit.kind === "trebuchet" ? 3 : 1;
@@ -4765,7 +5258,8 @@ export class GameSim {
     const rotation = open[(this.state.waveIndex + existing.length) % open.length];
     const lane = open.reduce((best, l) => (lanePressure[l] > lanePressure[best] ? l : best), rotation);
 
-    const y = 210 + existing.length * 38;
+    const near = 210 + existing.length * 38;
+    const y = team === "foe" ? near : WORLD_H - near;
     const x =
       (lanePathX(this.activeMap.seed, "you", lane, y) +
         lanePathX(this.activeMap.seed, "foe", lane, y)) /
@@ -4773,7 +5267,7 @@ export class GameSim {
     const builder = this.state.villagers
       .filter(
         (v) =>
-          v.team === "foe" &&
+          v.team === team &&
           v.state !== "garrisoned" &&
           v.state !== "toGarrison" &&
           v.state !== "defend" &&
@@ -4791,10 +5285,10 @@ export class GameSim {
       const node = this.state.nodes.find((n) => n.id === builder.targetNodeId);
       if (node) node.workers = Math.max(0, node.workers - 1);
     }
-    this.spendRes("foe", cost);
+    this.spendRes(team, cost);
     const barricade = {
       id: this.next(),
-      team: "foe" as Team,
+      team,
       lane,
       pos: { x, y },
       hp: BARRICADE_HP,
@@ -4809,29 +5303,29 @@ export class GameSim {
     builder.targetEnemyId = undefined;
     builder.targetBarricadeId = barricade.id;
     builder.state = "toBarricade";
-    this.addToast(`Enemy peons fortify ${laneName(this.activeMap.seed, lane)} road.`);
+    if (team === "foe") this.addToast(`Enemy peons fortify ${laneName(this.activeMap.seed, lane)} road.`);
     return true;
   }
 
-  aiCoordinateRush(skill: number) {
+  aiCoordinateRush(skill: number, team: Team = "foe") {
     const held = this.state.units.filter(
-      (u) => u.team === "foe" && u.fromBarracks && u.aiHeldForRush && u.hp > 0,
+      (u) => u.team === team && u.fromBarracks && u.aiHeldForRush && u.hp > 0,
     );
     if (held.length === 0) {
-      this.aiRushDeadline = 0;
+      this.aiRushDeadline[team] = 0;
       return false;
     }
-    if (this.aiRushDeadline <= 0) {
-      this.aiRushDeadline = this.state.time + Math.max(6, 10 - skill * 0.04);
+    if (this.aiRushDeadline[team] <= 0) {
+      this.aiRushDeadline[team] = this.state.time + Math.max(6, 10 - skill * 0.04);
     }
 
-    const immediateDefense = this.aiObservedHumanUnits(245).length > 0;
+    const immediateDefense = this.aiObservedHumanUnits(245, team).length > 0;
     const groupSize = Math.min(7, 4 + Math.floor(skill / 35));
     const hasFrontline = held.some(
       (u) => u.kind !== "archer" && u.kind !== "rammer" && u.kind !== "trebuchet" && u.kind !== "spy",
     );
     const hasSupport = held.some((u) => u.kind === "archer" || isWardKind(u.kind));
-    const timedOut = this.state.time >= this.aiRushDeadline;
+    const timedOut = this.state.time >= this.aiRushDeadline[team];
     const release =
       (immediateDefense && held.length >= 2) ||
       (held.length >= groupSize && (hasFrontline && hasSupport)) ||
@@ -4839,7 +5333,7 @@ export class GameSim {
     if (!release) return false;
 
     const lanes = mapLanes(this.activeMap.seed);
-    const laneDefense = this.laneDefense("you", 1.5);
+    const laneDefense = this.laneDefense(this.enemyOf(team), 1.5);
     const weakest = [...lanes].sort((a, b) => laneDefense[a] - laneDefense[b] || a - b);
     const targetLane = weakest[0];
     // Every third unit feints down the next-weakest road, when there is one.
@@ -4852,17 +5346,17 @@ export class GameSim {
       unit.targetUnitId = undefined;
       unit.lane = index % 3 === 2 ? feintLane : targetLane;
     });
-    this.aiRushDeadline = 0;
-    this.addToast(`Enemy warband rushes ${laneName(this.activeMap.seed, targetLane)} road!`);
+    this.aiRushDeadline[team] = 0;
+    if (team === "foe") this.addToast(`Enemy warband rushes ${laneName(this.activeMap.seed, targetLane)} road!`);
     return true;
   }
 
-  aiUpgradeDefense(preference: "damage" | "rate" | "adaptive" = "adaptive") {
+  aiUpgradeDefense(preference: "damage" | "rate" | "adaptive" = "adaptive", team: Team = "foe") {
     const towers = this.state.buildings.filter(
-      (b) => b.team === "foe" && b.kind !== "barracks" && b.kind !== "house",
+      (b) => b.team === team && b.kind !== "barracks" && b.kind !== "house",
     );
     if (towers.length === 0) return false;
-    const observed = this.aiObservedHumanUnits();
+    const observed = this.aiObservedHumanUnits(430, team);
     const spies = observed.filter((u) => u.kind === "spy").length;
     const fast = observed.filter((u) => u.kind === "runner" || u.kind === "raider").length;
     const heavy = observed.filter(
@@ -4872,8 +5366,8 @@ export class GameSim {
       const kennel = towers.find((b) => b.kind === "ballista" && b.rateRank < 2);
       if (kennel) {
         const cost = UPGRADE_COST[kennel.rateRank];
-        if (this.state.gold.foe >= cost + AI_RESERVE) {
-          this.spend("foe", cost);
+        if (this.state.gold[team] >= cost + AI_RESERVE) {
+          this.spend(team, cost);
           kennel.rateRank = (kennel.rateRank + 1) as 1 | 2;
           kennel.spent += cost;
           return true;
@@ -4884,7 +5378,7 @@ export class GameSim {
     const laneThreat = [0, 0, 0];
     for (const unit of observed) laneThreat[unit.lane] += unit.kind === "rammer" || unit.kind === "trebuchet" ? 2 : 1;
     const threatenedLane = topLane(mapLanes(this.activeMap.seed), (lane) => laneThreat[lane]);
-    const pads = this.getPads("foe");
+    const pads = this.getPads(team);
 
     const ordered = [...towers].sort((a, b) => {
       const padA = pads.find((p) => p.id === a.padId);
@@ -4900,8 +5394,8 @@ export class GameSim {
       if (!tower) return false;
       const rank = kind === "damage" ? tower.damageRank : tower.rateRank;
       const cost = UPGRADE_COST[rank];
-      if (this.state.gold.foe < cost + AI_RESERVE) return false;
-      this.spend("foe", cost);
+      if (this.state.gold[team] < cost + AI_RESERVE) return false;
+      this.spend(team, cost);
       if (kind === "damage") tower.damageRank = (tower.damageRank + 1) as 1 | 2;
       else tower.rateRank = (tower.rateRank + 1) as 1 | 2;
       tower.spent += cost;
@@ -4914,20 +5408,20 @@ export class GameSim {
     return this.aiUpgradeDefense("adaptive");
   }
 
-  aiAssignWorkers() {
-    const nodes = this.state.nodes.filter((n) => n.team === "foe" && n.loadsLeft > 0);
-    const peons = this.state.villagers.filter((v) => v.team === "foe");
+  aiAssignWorkers(team: Team = "foe", resourceBias: ResourceBias = "balanced") {
+    const nodes = this.state.nodes.filter((n) => n.team === team && n.loadsLeft > 0);
+    const peons = this.state.villagers.filter((v) => v.team === team);
 
     // Reconcile slot counts from actual assignments so interrupted workers do
     // not leave phantom occupancy behind.
-    for (const node of this.state.nodes.filter((n) => n.team === "foe")) {
+    for (const node of this.state.nodes.filter((n) => n.team === team)) {
       node.workers = peons.filter((v) => v.targetNodeId === node.id).length;
     }
 
     const urgentKind =
-      this.state.wood.foe < 75
+      this.state.wood[team] < 75
         ? "pine"
-        : this.state.gold.foe < 70
+        : this.state.gold[team] < 70
           ? "copper"
           : null;
     if (
@@ -4950,10 +5444,45 @@ export class GameSim {
       }
     }
 
+    if (this.cpuStyle[team] === "doctrine") {
+      // Doctrine shifts workers toward the resource bottlenecking its active EcoGoal.
+      const wood = this.state.wood[team];
+      const gold = this.state.gold[team];
+      const wantKind =
+        wood > 280 && gold < 220
+          ? "copper"
+          : resourceBias === "wood"
+            ? "pine"
+            : resourceBias === "gold"
+              ? "copper"
+              : wood < 170 && gold > 240
+                ? "pine"
+                : gold < 120 && wood > 260
+                  ? "copper"
+                  : null;
+      if (wantKind) {
+        const hasOpen = nodes.some((n) => n.kind === wantKind && n.workers < n.maxWorkers);
+        const onWant = peons.filter((v) => nodes.find((n) => n.id === v.targetNodeId)?.kind === wantKind).length;
+        const maxShare = resourceBias === "balanced" ? 0.65 : 0.72;
+        if (hasOpen && onWant < Math.ceil(peons.length * maxShare)) {
+          const donor = peons.find((v) => {
+            const node = nodes.find((n) => n.id === v.targetNodeId);
+            return node && node.kind !== wantKind && (v.state === "toNode" || v.state === "gathering");
+          });
+          if (donor?.targetNodeId) {
+            const old = nodes.find((n) => n.id === donor.targetNodeId);
+            if (old) old.workers = Math.max(0, old.workers - 1);
+            donor.targetNodeId = undefined;
+            donor.state = "idle";
+          }
+        }
+      }
+    }
+
     let idle = peons.filter((v) => v.state === "idle" || v.state === "home").length;
     while (idle > 0) {
-      const lowWood = this.state.wood.foe < 100;
-      const lowGold = this.state.gold.foe < 100;
+      const lowWood = this.state.wood[team] < 100 || resourceBias === "wood";
+      const lowGold = this.state.gold[team] < 100 || resourceBias === "gold";
       const target = nodes
         .filter((n) => n.workers < n.maxWorkers)
         .sort((a, b) => {
@@ -4971,34 +5500,37 @@ export class GameSim {
           return score(b) - score(a);
         })[0];
       if (!target) break;
-      this.assignVillagerToNode(target.id, "foe");
+      this.assignVillagerToNode(target.id, team);
       idle -= 1;
     }
   }
 
-  aiEnqueueTrain(kind: TrainKind) {
+  aiEnqueueTrain(kind: TrainKind, team: Team = "foe") {
     const train = this.campaignMission?.unit ?? kind;
     const def = UNIT_DEFS[train];
     const cost: ResCost = { gold: def.cost ?? 30, wood: def.woodCost ?? 0 };
-    if (this.state.gold.foe < cost.gold + AI_RESERVE) return false;
-    if (this.state.wood.foe < cost.wood) return false;
-    const bars = this.state.buildings.filter((b) => b.team === "foe" && b.kind === "barracks");
+    if (this.state.gold[team] < cost.gold + AI_RESERVE) return false;
+    if (this.state.wood[team] < cost.wood) return false;
+    const bars = this.state.buildings
+      .filter((b) => b.team === team && b.kind === "barracks")
+      .sort((a, b) => a.queue.length - b.queue.length);
     if (bars.length === 0) return false;
-    return this.enqueueTrain(train, "foe");
+    return this.enqueueTrainAt(team, train, bars[0].id);
   }
 
   /** Foe holds home when pressed, otherwise mid/forward bridges. */
-  private aiPickDefendLayer() {
+  private aiPickDefendLayer(team: Team = "foe") {
+    if (this.cpuStyle[team] === "doctrine") return;
     const opts = defendLayerOptions(this.activeMap.seed);
     if (opts.length === 0) return;
-    const troops = this.state.units.filter((u) => u.team === "foe" && u.fromBarracks && u.hp > 0).length;
+    const troops = this.state.units.filter((u) => u.team === team && u.fromBarracks && u.hp > 0).length;
     if (troops === 0) {
-      if (this.state.defendLayer.foe) this.applyDefendLayer("foe", null);
+      if (this.state.defendLayer[team]) this.applyDefendLayer(team, null);
       return;
     }
     const pressed =
-      this.state.units.filter((u) => u.team === "you" && u.hp > 0 && u.pos.y < WORLD_H * 0.45).length >= 3 ||
-      this.state.keeps.foe.hp < this.state.keeps.foe.maxHp * 0.55;
+      this.aiObservedHumanUnits(WORLD_H * 0.45, team).length >= 3 ||
+      this.state.keeps[team].hp < this.state.keeps[team].maxHp * 0.55;
     let pick: DefendLayerId =
       opts.find((o) => o.id === "home")?.id ?? opts[0]!.id;
     if (!pressed) {
@@ -5006,31 +5538,32 @@ export class GameSim {
       else if (opts.some((o) => o.id === "mid")) pick = "mid";
       else pick = opts[opts.length - 1]!.id;
     }
-    if (this.state.defendLayer.foe !== pick) this.applyDefendLayer("foe", pick);
+    if (this.state.defendLayer[team] !== pick) this.applyDefendLayer(team, pick);
   }
 
-  aiTrainUnits() {
-    if (this.campaignMission) {
-      this.aiEnqueueTrain(this.campaignMission.unit);
+  aiTrainUnits(team: Team = "foe", prefer: TrainKind | null = null) {
+    if (this.campaignMission && team === "foe") {
+      this.aiEnqueueTrain(this.campaignMission.unit, team);
       return;
     }
-    const bars = this.state.buildings.filter((b) => b.team === "foe" && b.kind === "barracks");
+    const bars = this.state.buildings.filter((b) => b.team === team && b.kind === "barracks");
     if (bars.length === 0) return false;
     if (bars.every((b) => b.queue.length >= 3)) return false;
-    const gold = this.state.gold.foe;
-    const wood = this.state.wood.foe;
+    const gold = this.state.gold[team];
+    const wood = this.state.wood[team];
     if (gold < AI_RESERVE + 28) return false;
-    const observed = this.aiObservedHumanUnits();
+    const observed = this.aiObservedHumanUnits(430, team);
+    const enemy = this.enemyOf(team);
     const yourTowers = this.state.buildings.filter(
-      (b) => b.team === "you" && b.kind !== "barracks" && b.kind !== "house",
+      (b) => b.team === enemy && b.kind !== "barracks" && b.kind !== "house",
     ).length;
     const ranged = observed.filter((u) => u.kind === "archer").length;
     const fast = observed.filter((u) => u.kind === "runner" || u.kind === "raider").length;
     const heavy = observed.filter(
       (u) => u.kind === "brute" || isWardKind(u.kind) || u.kind === "rammer" || u.kind === "trebuchet",
     ).length;
-    const visibleBarricades = this.state.barricades.filter((b) => b.team === "you" && b.built).length;
-    const force = this.state.units.filter((u) => u.team === "foe" && u.fromBarracks);
+    const visibleBarricades = this.state.barricades.filter((b) => b.team === enemy && b.built).length;
+    const force = this.state.units.filter((u) => u.team === team && u.fromBarracks);
     const queuedKinds = bars.flatMap((b) => b.queue.map((job) => job.kind));
     const count = (kind: TrainKind) =>
       force.filter((u) => u.kind === kind).length + queuedKinds.filter((k) => k === kind).length;
@@ -5053,11 +5586,12 @@ export class GameSim {
       candidates = [...mixed].sort((a, b) => count(a) - count(b));
       if (yourTowers >= 3) candidates.unshift("ward");
     }
+    if (prefer) candidates.unshift(prefer);
 
     for (const kind of candidates) {
       const def = UNIT_DEFS[kind];
       if (gold >= (def.cost ?? 30) + AI_RESERVE && wood >= (def.woodCost ?? 0)) {
-        if (this.enqueueTrain(kind, "foe")) return true;
+        if (this.aiEnqueueTrain(kind, team)) return true;
       }
     }
     return false;

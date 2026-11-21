@@ -4,20 +4,19 @@ import type { Team } from "./types";
 /**
  * Oblique RTS frame for one side.
  * South (`you`) looks north from behind their keep. North (`foe`) looks south
- * from behind theirs. The battlefield geometry is not mirrored.
+ * from behind theirs. Framed close and clear over the keep + eco house pads so
+ * players can deploy houses immediately at match start.
  */
 export function homeCameraFrame(team: Team) {
   const north = team === "foe";
-  // Keep world-Z (sim Y centered on 0). Camera sits further back via pitch/dist
-  // so the peon house pads between the lens and the keep stay on screen.
+  // Keep world-Z (sim Y centered on 0). Eco house pads sit ~54-70 units behind
+  // the keep, so aim just behind the keep at a steeper angle for crisp pad clicks.
   const keepZ = WORLD_H / 2 - KEEP_MARGIN;
-  // Aim a little toward the field so the keep sits mid-frame and the eco yard
-  // fills the near ground behind it.
-  const lookDepth = keepZ - 70;
+  const lookDepth = keepZ + 18;
   return {
-    yaw: north ? Math.PI - 0.12 : 0.12,
-    pitch: 1.08,
-    dist: 480,
+    yaw: north ? Math.PI - 0.08 : 0.08,
+    pitch: 0.68,
+    dist: 460,
     lookX: 0,
     lookY: 14,
     lookZ: north ? -lookDepth : lookDepth,

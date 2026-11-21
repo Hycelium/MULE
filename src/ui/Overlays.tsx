@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { laneCount } from "../game/map";
+import {
+  buildGithubIssueUrl,
+  downloadHumanLogs,
+  exportHumanLogsJson,
+  humanRecordSummary,
+} from "../game/matchLog";
 import type { UiSnapshot } from "../game/types";
 import { MapPreview } from "./MapPreview";
 
@@ -82,6 +88,7 @@ export function Overlays({
   onDeclineDuel,
 }: OverlaysProps) {
   const [shareNote, setShareNote] = useState("");
+  const [logNote, setLogNote] = useState("");
   const [arcadeOpen, setArcadeOpen] = useState(false);
   const roads = laneCount(ui.mapSeed);
 
@@ -90,6 +97,22 @@ export function Overlays({
     const id = window.setTimeout(() => setShareNote(""), 2200);
     return () => window.clearTimeout(id);
   }, [shareNote]);
+
+  useEffect(() => {
+    if (!logNote) return;
+    const id = window.setTimeout(() => setLogNote(""), 2400);
+    return () => window.clearTimeout(id);
+  }, [logNote]);
+
+  const copyLogs = async () => {
+    const json = exportHumanLogsJson();
+    try {
+      await navigator.clipboard.writeText(json);
+      setLogNote("Match log copied.");
+    } catch {
+      setLogNote(copyWithSelection(json) ? "Match log copied." : "Download the JSON instead.");
+    }
+  };
 
   const copyLink = async () => {
     const ok = await copyText(ITCH_PAGE);
@@ -279,6 +302,43 @@ export function Overlays({
             </>
           ) : (
             <>
+              {(() => {
+                const rec = humanRecordSummary();
+                if (rec.total === 0) return null;
+                return (
+                  <>
+                    <p className="foe-brain-tease">
+                      Doctrine vs You: {rec.docWins}–{rec.humanWins} ({rec.total} logged)
+                    </p>
+                    <div className="title-actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => {
+                          downloadHumanLogs();
+                          setLogNote("Saved JSON for logs/human-matches/.");
+                        }}
+                      >
+                        Save Log (.json)
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => {
+                          window.open(buildGithubIssueUrl(), "_blank", "noopener,noreferrer");
+                          setLogNote("Opened GitHub log issue.");
+                        }}
+                      >
+                        Send to GitHub
+                      </button>
+                      <button type="button" className="ghost" onClick={copyLogs}>
+                        Copy Log
+                      </button>
+                    </div>
+                    {logNote && <p className="foe-brain-tease">{logNote}</p>}
+                  </>
+                );
+              })()}
               <p className="map-next-hint">Play again loads the map for your current keep level. The foe keeps learning.</p>
               <button type="button" className="cta" onClick={onRestart}>
                 Play again

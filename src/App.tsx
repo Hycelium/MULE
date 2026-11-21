@@ -633,6 +633,17 @@ export default function App() {
       rendererRef.current?.onWheel(ev);
       setZoomT(rendererRef.current?.getZoomT() ?? 0.4);
     };
+    const onDblClick = (ev: MouseEvent) => {
+      const r = rendererRef.current;
+      if (!r || document.pointerLockElement === canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const world = r.screenToWorld(ev.clientX - rect.left, ev.clientY - rect.top);
+      const hit = hitTest(sim.getState(), world.x, world.y);
+      // Double-click empty battlefield terrain to smoothly zoom right into that spot.
+      if (!hit) {
+        r.focusWorld(world.x, world.y, Math.min(r.getZoomT() < 0.2 ? 120 : 190, 220));
+      }
+    };
     const onContext = (ev: Event) => ev.preventDefault();
     const stopGesture = (ev: Event) => {
       // Only the canvas itself; sheets/overlays inside the stage must keep scrolling.
@@ -644,6 +655,7 @@ export default function App() {
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointercancel", onUp);
     canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("dblclick", onDblClick);
     canvas.addEventListener("contextmenu", onContext);
     // iOS Safari pinch/double-tap page zoom over the stage.
     stage.addEventListener("gesturestart", stopGesture);
@@ -671,6 +683,7 @@ export default function App() {
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("pointercancel", onUp);
       canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("dblclick", onDblClick);
       canvas.removeEventListener("contextmenu", onContext);
       stage.removeEventListener("gesturestart", stopGesture);
       stage.removeEventListener("gesturechange", stopGesture);
@@ -831,13 +844,23 @@ export default function App() {
       if (r) {
         if (ev.key === "=" || ev.key === "+") r.zoomBy(0.9);
         if (ev.key === "-" || ev.key === "_") r.zoomBy(1.1);
-        if (ev.key === "r" || ev.key === "R") r.resetCamera();
-        if ((ev.key === "q" || ev.key === "Q") && !possessed) r.orbitBy(28, 0);
-        if (ev.key === "e" || ev.key === "E") r.orbitBy(-28, 0);
-        if (ev.key === "ArrowLeft") r.panBy(40, 0);
-        if (ev.key === "ArrowRight") r.panBy(-40, 0);
-        if (ev.key === "ArrowUp") r.panBy(0, 40);
-        if (ev.key === "ArrowDown") r.panBy(0, -40);
+        if (ev.key === "r" || ev.key === "R" || ev.key === "h" || ev.key === "H") r.resetCamera();
+        if (ev.key === "b" || ev.key === "B") r.focusBattle(sim.getState());
+        if (
+          step === "w" ||
+          step === "a" ||
+          step === "s" ||
+          step === "d" ||
+          step === "q" ||
+          step === "e" ||
+          ev.key === "ArrowLeft" ||
+          ev.key === "ArrowRight" ||
+          ev.key === "ArrowUp" ||
+          ev.key === "ArrowDown"
+        ) {
+          if (ev.key.startsWith("Arrow")) ev.preventDefault();
+          r.setCamKey(ev.key, true);
+        }
         setZoomT(r.getZoomT());
       }
       refreshUi();
@@ -845,12 +868,18 @@ export default function App() {
     const onUp = (ev: KeyboardEvent) => {
       const step = ev.key.toLowerCase();
       if (step === "w" || step === "a" || step === "s" || step === "d") sim.setPossessKey(step, false);
+      rendererRef.current?.setCamKey(ev.key, false);
+    };
+    const onBlur = () => {
+      rendererRef.current?.clearCamKeys();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", onBlur);
     };
   }, [sim, refreshUi, setPatrol, toggleFullscreen, skirmish.liveRef]);
 
@@ -928,9 +957,9 @@ export default function App() {
       showHint(
         touch ? "touch-start" : "mouse-start",
         touch
-          ? "Tap your keep to train peons. Two fingers: drag to pan, pinch to zoom, twist to rotate."
+          ? "Tap your keep to train peons. Two fingers: drag to pan, pinch to zoom into any spot, twist to rotate."
           : ui.pvp
-            ? "Click your keep to train peons. Right-drag orbits, Shift-drag pans, wheel zooms."
+            ? "Click your keep to train peons. WASD/Mid-drag pans, wheel zooms to cursor, right-drag orbits, B jumps to battle."
             : "Click a trained soldier to take the field. WASD move, mouse look, click to strike. Kills pull the camera out. Esc returns.",
       );
     }
@@ -1559,7 +1588,9 @@ export default function App() {
             </div>
           )}
           {!layout.touch && (
-            <p className="cam-hint">Drag-select · right-click orders · right-drag orbit · Shift-drag pan · wheel zoom</p>
+            <p className="cam-hint">
+              WASD/Arrows or Mid/Shift-drag pan · Wheel zooms to cursor · Right-drag orbit · B battle · R keep
+            </p>
           )}
           <div className="sheet-dock">
             <div className="sheet-slot">

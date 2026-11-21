@@ -429,18 +429,15 @@ export const FIRST_WAVE_AT = FIRST_BUILD;
 export const BETWEEN_WAVES = BUILD_PAUSE;
 
 /**
- * AI combat multiplier for the shared attack-wave counter.
- * Wave 1 is 1×. Each later wave adds the same step. Wave 16 is 2×.
- * Before wave 1 (counter 0) this is 1×. After wave 16 it stays at 2×.
+ * Equal 1× combat strength for both sides. AI wins by strategy, not hidden stat buffs.
  */
-export function aiWaveStrength(wave: number): number {
-  const step = Math.min(16, Math.max(1, wave));
-  return 1 + (step - 1) / 15;
+export function aiWaveStrength(_wave: number): number {
+  return 1;
 }
 
-/** Humans stay at 1. Every AI team uses `aiWaveStrength`. */
-export function combatWaveScale(team: Team, wave: number): number {
-  return team === "you" ? 1 : aiWaveStrength(wave);
+/** Fair 1× combat scaling for both human and AI teams. */
+export function combatWaveScale(_team: Team, _wave: number): number {
+  return 1;
 }
 
 export function formatCost(c: ResCost) {

@@ -223,11 +223,13 @@ export class GameRenderer {
   private homeSide: Team = "you";
   /** Battlefield width in sim units. 3-road maps are wider than the default 400. */
   private mapWidth = WORLD_W;
-  private readonly camDistMin = 80;
-  private readonly camDistMax = 900;
-  private readonly camPitchMin = 0.72;
-  private readonly camPitchMax = 1.35;
+  private readonly camDistMin = 38;
+  private readonly camDistMax = 1500;
+  private readonly camPitchMin = 0.4;
+  private readonly camPitchMax = 1.42;
   private camShake = new THREE.Vector3();
+  private camKeys = new Set<string>();
+  private camGlide: { x: number; z: number; dist: number | null } | null = null;
   private pointers = new Map<number, { x: number; y: number; ox: number; oy: number }>();
   private dragMode: "none" | "orbit" | "pan" | "pinch" | "select" = "none";
   private dragMoved = false;
@@ -486,6 +488,7 @@ export class GameRenderer {
 
   /** Best default RTS framing — oblique, on the local keep's side of the map. */
   resetCamera() {
+    this.camGlide = null;
     const frame = this.arenaView ? arenaCameraFrame() : homeCameraFrame(this.homeSide);
     // Pull back a little on wide maps so the outer roads start in view.
     this.camDist = this.arenaView
@@ -495,6 +498,138 @@ export class GameRenderer {
     this.camPitch = frame.pitch;
     this.camLook.set(frame.lookX, frame.lookY, frame.lookZ);
     this.applyCamera();
+  }
+
+  private clampCamLook() {
+    const panX = this.mapWidth / 2 + 60;
+    const panZ = WORLD_H / 2 + 130;
+    this.camLook.x = THREE.MathUtils.clamp(this.camLook.x, -panX, panX);
+    this.camLook.z = THREE.MathUtils.clamp(this.camLook.z, -panZ, panZ);
+  }
+
+  private groundHitAt(screenX: number, screenY: number): THREE.Vector3 | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return null;
+    this.pointer.x = (screenX / rect.width) * 2 - 1;
+    this.pointer.y = -(screenY / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hit = new THREE.Vector3();
+    return this.raycaster.ray.intersectPlane(this.groundPlane, hit) ? hit : null;
+  }
+
+  /** Smoothly glide the camera target onto a sim-space world point (and optional close-up distance). */
+  focusWorld(worldX: number, worldY: number, targetDist?: number) {
+    if (this.fpsLive) return;
+    this.camGlide = {
+      x: worldX - WORLD_W / 2,
+      z: worldY - WORLD_H / 2,
+      dist: targetDist != null ? THREE.MathUtils.clamp(targetDist, this.camDistMin, this.camDistMax) : null,
+    };
+  }
+
+  /** Jump to the hottest active battle (or furthest frontline squad) for close-up viewing. */
+  focusBattle(state: GameState) {
+    if (this.fpsLive) return;
+    const combat = state.units.filter((u) => u.hp > 0 && u.fromBarracks);
+    const youUnits = combat.filter((u) => u.team === "you");
+    const foeUnits = combat.filter((u) => u.team === "foe");
+    let bestPairDist = Infinity;
+    let targetX = WORLD_W / 2;
+    let targetY = WORLD_H / 2;
+    let found = false;
+
+    for (const a of youUnits) {
+      for (const b of foeUnits) {
+        const d = Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y);
+        if (d < bestPairDist) {
+          bestPairDist = d;
+          targetX = (a.pos.x + b.pos.x) / 2;
+          targetY = (a.pos.y + b.pos.y) / 2;
+          found = true;
+        }
+      }
+    }
+
+    if (!found || bestPairDist > 190) {
+      // No active clash yet — focus the most forward friendly squad, else center of the battlefield.
+      const own = state.units.filter((u) => u.hp > 0 && u.team === this.homeSide && u.fromBarracks);
+      if (own.length > 0) {
+        own.sort((a, b) => (this.homeSide === "you" ? a.pos.y - b.pos.y : b.pos.y - a.pos.y));
+        targetX = own[0]!.pos.x;
+        targetY = own[0]!.pos.y;
+      }
+    }
+    this.focusWorld(targetX, targetY, Math.min(this.camDist, 185));
+  }
+
+  setCamKey(key: string, down: boolean) {
+    const k = key.toLowerCase();
+    if (down) {
+      this.camKeys.add(k);
+      this.camGlide = null;
+    } else {
+      this.camKeys.delete(k);
+    }
+  }
+
+  clearCamKeys() {
+    this.camKeys.clear();
+  }
+
+  private stepCamera(dt: number) {
+    if (this.fpsLive) return;
+    let dirty = false;
+
+    // Continuous smooth WASD / Arrow panning and Q/E orbiting.
+    let moveRight = 0;
+    let moveBack = 0;
+    if (this.camKeys.has("a") || this.camKeys.has("arrowleft")) moveRight -= 1;
+    if (this.camKeys.has("d") || this.camKeys.has("arrowright")) moveRight += 1;
+    if (this.camKeys.has("w") || this.camKeys.has("arrowup")) moveBack -= 1;
+    if (this.camKeys.has("s") || this.camKeys.has("arrowdown")) moveBack += 1;
+    if (moveRight !== 0 || moveBack !== 0) {
+      const len = Math.hypot(moveRight, moveBack);
+      const nx = moveRight / len;
+      const nz = moveBack / len;
+      const speed = Math.max(130, this.camDist * 0.95) * dt;
+      const forward = new THREE.Vector3(Math.sin(this.camYaw), 0, Math.cos(this.camYaw));
+      const right = new THREE.Vector3(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
+      this.camLook.addScaledVector(right, nx * speed);
+      this.camLook.addScaledVector(forward, nz * speed);
+      this.clampCamLook();
+      dirty = true;
+    }
+
+    let orbitDir = 0;
+    if (this.camKeys.has("q")) orbitDir += 1;
+    if (this.camKeys.has("e")) orbitDir -= 1;
+    if (orbitDir !== 0) {
+      this.camYaw -= orbitDir * 1.45 * dt;
+      dirty = true;
+    }
+
+    if (this.camGlide) {
+      const k = 1 - Math.exp(-8 * dt);
+      this.camLook.x += (this.camGlide.x - this.camLook.x) * k;
+      this.camLook.z += (this.camGlide.z - this.camLook.z) * k;
+      if (this.camGlide.dist != null) {
+        this.camDist += (this.camGlide.dist - this.camDist) * k;
+      }
+      this.clampCamLook();
+      const closePos =
+        Math.hypot(this.camGlide.x - this.camLook.x, this.camGlide.z - this.camLook.z) < 0.8;
+      const closeDist =
+        this.camGlide.dist == null || Math.abs(this.camGlide.dist - this.camDist) < 0.8;
+      if (closePos && closeDist) {
+        this.camLook.x = this.camGlide.x;
+        this.camLook.z = this.camGlide.z;
+        if (this.camGlide.dist != null) this.camDist = this.camGlide.dist;
+        this.camGlide = null;
+      }
+      dirty = true;
+    }
+
+    if (dirty) this.applyCamera();
   }
 
   getHomeSide() {
@@ -509,8 +644,28 @@ export class GameRenderer {
 
   zoomBy(factor: number) {
     if (this.fpsLive) return;
+    this.camGlide = null;
     this.camDist = THREE.MathUtils.clamp(this.camDist * factor, this.camDistMin, this.camDistMax);
     this.applyCamera();
+  }
+
+  /** Zoom toward the exact map point under (screenX, screenY) so you can inspect any battle close up. */
+  zoomAtScreen(factor: number, screenX: number, screenY: number) {
+    if (this.fpsLive) return;
+    this.camGlide = null;
+    const before = this.groundHitAt(screenX, screenY);
+    this.camDist = THREE.MathUtils.clamp(this.camDist * factor, this.camDistMin, this.camDistMax);
+    this.applyCamera();
+    if (before) {
+      this.camera.updateMatrixWorld();
+      const after = this.groundHitAt(screenX, screenY);
+      if (after) {
+        this.camLook.x += before.x - after.x;
+        this.camLook.z += before.z - after.z;
+        this.clampCamLook();
+        this.applyCamera();
+      }
+    }
   }
 
   /** Normalised zoom: 0 = closest, 1 = furthest. */
@@ -561,17 +716,14 @@ export class GameRenderer {
 
   panBy(dx: number, dy: number) {
     if (this.fpsLive) return;
+    this.camGlide = null;
     // Pan relative to camera facing on the ground plane
     const forward = new THREE.Vector3(Math.sin(this.camYaw), 0, Math.cos(this.camYaw));
     const right = new THREE.Vector3(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
-    const scale = this.camDist * 0.00145;
+    const scale = Math.max(0.18, this.camDist * 0.00145);
     this.camLook.addScaledVector(right, -dx * scale);
     this.camLook.addScaledVector(forward, -dy * scale);
-    const panX = this.mapWidth / 2 - 40;
-    // Reach the eco yard behind each keep on the tall field.
-    const panZ = WORLD_H / 2 + 80;
-    this.camLook.x = THREE.MathUtils.clamp(this.camLook.x, -panX, panX);
-    this.camLook.z = THREE.MathUtils.clamp(this.camLook.z, -panZ, panZ);
+    this.clampCamLook();
     this.applyCamera();
   }
 
@@ -634,13 +786,13 @@ export class GameRenderer {
     this.pointerButton = ev.button;
     this.lastPtr = { x: ev.clientX, y: ev.clientY };
 
-    // Middle / Alt = orbit immediately. Right-click is a command when tapped,
-    // but promotes to orbit when dragged.
-    if (ev.button === 1 || ev.altKey) {
-      this.dragMode = "orbit";
-      this.suppressClick = true;
-    } else if (ev.shiftKey) {
+    // Middle-drag or Shift-drag = pan freely across the battlefield.
+    // Alt-drag = orbit immediately. Right-click taps order; right-drag orbits.
+    if (ev.button === 1 || ev.shiftKey) {
       this.dragMode = "pan";
+      this.suppressClick = true;
+    } else if (ev.altKey) {
+      this.dragMode = "orbit";
       this.suppressClick = true;
     } else {
       this.dragMode = "none"; // promote to select/orbit after move threshold
@@ -661,13 +813,18 @@ export class GameRenderer {
 
     if (this.dragMode === "pinch") {
       if (this.pointers.size < 2) return;
+      this.camGlide = null;
       const pts = [...this.pointers.values()];
       const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const cx = (pts[0].x + pts[1].x) / 2;
+      const cy = (pts[0].y + pts[1].y) / 2;
+      const rect = this.canvas.getBoundingClientRect();
+      const before = this.groundHitAt(cx - rect.left, cy - rect.top);
       if (this.pinchStartDist > 1) {
         const ratio = this.pinchStartDist / Math.max(1, d);
         this.camDist = THREE.MathUtils.clamp(this.pinchStartCamDist * ratio, this.camDistMin, this.camDistMax);
       }
-      // Twist â†’ yaw orbit
+      // Twist → yaw orbit
       const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
       let dAngle = angle - this.pinchStartAngle;
       if (dAngle > Math.PI) dAngle -= Math.PI * 2;
@@ -676,9 +833,18 @@ export class GameRenderer {
         this.camYaw -= dAngle;
         this.pinchStartAngle = angle;
       }
-      // Centroid drift â†’ pan
-      const cx = (pts[0].x + pts[1].x) / 2;
-      const cy = (pts[0].y + pts[1].y) / 2;
+      // Keep the pinch anchor point locked on the map while zooming/twisting
+      this.applyCamera();
+      if (before) {
+        this.camera.updateMatrixWorld();
+        const after = this.groundHitAt(cx - rect.left, cy - rect.top);
+        if (after) {
+          this.camLook.x += before.x - after.x;
+          this.camLook.z += before.z - after.z;
+          this.clampCamLook();
+        }
+      }
+      // Centroid drift → pan
       const pdx = cx - this.pinchCenter.x;
       const pdy = cy - this.pinchCenter.y;
       this.pinchCenter = { x: cx, y: cy };
@@ -846,8 +1012,9 @@ export class GameRenderer {
       this.pullFpsBy(step);
       return;
     }
-    const factor = ev.deltaY > 0 ? 1.08 : 0.92;
-    this.zoomBy(factor);
+    const rect = this.canvas.getBoundingClientRect();
+    const factor = ev.deltaY > 0 ? 1.1 : 0.9;
+    this.zoomAtScreen(factor, ev.clientX - rect.left, ev.clientY - rect.top);
   }
 
   /** Positive delta pulls the camera toward third person (same as scroll-wheel out). */
@@ -1156,6 +1323,7 @@ export class GameRenderer {
     this.wallClock = now;
     this.sampleFrame(rawMs);
 
+    this.stepCamera(step);
     this.syncScene(state, step);
 
     const profile = TIER_PROFILE[this.tier];
