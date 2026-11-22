@@ -2,6 +2,7 @@ import { skirmishMap } from "../game/map";
 import type {
   BuildingKind,
   DefendLayerId,
+  FormationId,
   GamePhase,
   Lane,
   MapDef,
@@ -45,6 +46,11 @@ export type RemoteOrder =
   | { t: "possess"; team: Team; id: number }
   | { t: "unpossess"; team: Team }
   | { t: "defend"; team: Team; layer: DefendLayerId | null }
+  | { t: "formation"; team: Team; id: FormationId }
+  | { t: "unitMove"; team: Team; ids: number[]; x: number; y: number }
+  | { t: "unitAttack"; team: Team; ids: number[]; targetId: number }
+  | { t: "unitAttackBuilding"; team: Team; ids: number[]; buildingId: number }
+  | { t: "unitAttackKeep"; team: Team; ids: number[] }
   | { t: "duelPropose"; team: Team }
   | { t: "duelAccept"; team: Team }
   | { t: "duelDecline"; team: Team };
@@ -258,6 +264,11 @@ const ORDER_TYPES = new Set<RemoteOrder["t"]>([
   "possess",
   "unpossess",
   "defend",
+  "formation",
+  "unitMove",
+  "unitAttack",
+  "unitAttackBuilding",
+  "unitAttackKeep",
   "duelPropose",
   "duelAccept",
   "duelDecline",

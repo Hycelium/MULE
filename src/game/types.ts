@@ -16,6 +16,8 @@ export type Lane = 0 | 1 | 2;
 export type LaneCount = 1 | 2 | 3;
 /** Troop stance: own keep, river belts, or enemy keep. */
 export type DefendLayerId = "keep" | "home" | "mid" | "forward" | "assault";
+/** Army / selection formation shape. */
+export type FormationId = "line" | "stagger" | "box" | "split";
 
 export interface Vec2 {
   x: number;
@@ -73,6 +75,14 @@ export interface Unit {
   rallyCooldown?: number;
   /** Seconds of Rally haste remaining (attack 25% faster). */
   rallyBuffTimer?: number;
+  /** Player issued an RTS move/attack; skips auto lane AI until cleared. */
+  playerOrdered?: boolean;
+  /** Forced attack target (enemy unit) from an RTS order. */
+  attackTargetId?: number;
+  /** Forced attack target (enemy building) from an RTS order. */
+  attackBuildingId?: number;
+  /** Forced attack on the enemy keep. */
+  attackKeep?: boolean;
   /** Arena gun-game ladder index (0 = peon … 4 = runner). */
   arenaRung?: number;
   /** Arena kills scored by this fighter (career). */
@@ -320,6 +330,8 @@ export interface GameState {
   buildSelection: BuildingKind | null;
   selectedBuildingId: number | null;
   selectedVillagerIds: number[];
+  /** Selected barracks troops / trebuchets (RTS). */
+  selectedUnitIds: number[];
   /** When set, DetailSheet shows peon training at the keep. */
   selectedKeepTeam: Team | null;
   hoveredPadId: string | null;
@@ -351,6 +363,8 @@ export interface GameState {
   possessAimUnitId: number | null;
   /** Barracks troops concentrate on this river belt when set. */
   defendLayer: Record<Team, DefendLayerId | null>;
+  /** Active hold / rearrange formation per team. */
+  formation: Record<Team, FormationId>;
   /** Local FFA gun-game practice or Final Duel yard; null outside those modes. */
   arena: ArenaMatchState | null;
   /** Skirmish Final Duel (propose → accept → courtyard 1v1). */
@@ -441,6 +455,8 @@ export interface UiSnapshot {
   selectedBuildingKind: BuildingKind | null;
   selectedKeepTeam: Team | null;
   selectedPeonCount: number;
+  /** Selected barracks troops / trebuchets. */
+  selectedUnitCount: number;
   selectedRanks: { damage: number; rate: number } | null;
   selectedCanUpgradeDamage: boolean;
   selectedCanUpgradeRate: boolean;
@@ -507,6 +523,10 @@ export interface UiSnapshot {
   defendLayer: DefendLayerId | null;
   /** Bridge belts available on this map (1–3). */
   defendLayers: { id: DefendLayerId; label: string }[];
+  /** Active army formation shape. */
+  formation: FormationId;
+  /** Formation shapes the Commands menu can pick. */
+  formations: { id: FormationId; label: string; hint: string }[];
   /** Local Arena gun-game practice. */
   arena: boolean;
   arenaRung: number;

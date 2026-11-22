@@ -1465,6 +1465,7 @@ export class GameRenderer {
 
   private syncKeeps(state: GameState) {
     const live = this.liveSet();
+    const showEnemyKeep = this.engagedEnemyIds(state).keep;
     for (const team of ["you", "foe"] as Team[]) {
       const key = `keep-${team}`;
       live.add(key);
@@ -1473,6 +1474,7 @@ export class GameRenderer {
       setPos3(obj, k.pos.x, k.pos.y, 0);
       if (k.hitFlash > 0) obj.scale.setScalar(1.04);
       else obj.scale.setScalar(1);
+      this.paintHpBar(obj, k.hp, k.maxHp, showEnemyKeep && team !== this.homeSide);
     }
     this.prune("keep-", live);
     this.prune("arena-", this.liveSet());
@@ -1505,6 +1507,7 @@ export class GameRenderer {
 
   private syncBuildings(state: GameState) {
     const live = this.liveSet();
+    const engagedBlds = this.engagedEnemyIds(state).buildings;
     for (const b of state.buildings) {
       const key = `bld-${b.id}`;
       live.add(key);
@@ -1591,6 +1594,7 @@ export class GameRenderer {
         const pulse = 1 + Math.sin(state.time * 7) * 0.1;
         mark.scale.setScalar(pulse);
       }
+      this.paintHpBar(obj, b.hp, b.maxHp, engagedBlds.has(b.id) && b.team !== this.homeSide);
       const arm = obj.userData.arm as THREE.Object3D | null;
       if (arm && b.animKick > 0) arm.rotation.z = -0.8 * (b.animKick / 0.15);
       else if (arm) arm.rotation.z = 0;
@@ -1873,8 +1877,183 @@ export class GameRenderer {
     obj.rotation.y = Math.PI - (obj.userData.faceYaw as number);
   }
 
+  /** Unit / building ids the local player is currently attacking (FPS or RTS). */
+  private engagedEnemyIds(state: GameState): { units: Set<number>; buildings: Set<number>; keep: boolean } {
+    const units = new Set<number>();
+    const buildings = new Set<number>();
+    let keep = false;
+    if (state.possessAimUnitId != null) units.add(state.possessAimUnitId);
+    if (state.possessAimBuildingId != null) buildings.add(state.possessAimBuildingId);
+    const selected = new Set(state.selectedUnitIds);
+    for (const u of state.units) {
+      if (u.team !== this.homeSide || u.hp <= 0) continue;
+      const mine = selected.has(u.id) || u.id === state.possessedId || u.playerOrdered;
+      if (!mine && u.targetUnitId == null) continue;
+      if (u.attackTargetId != null) units.add(u.attackTargetId);
+      if (u.targetUnitId != null && (mine || selected.has(u.id))) units.add(u.targetUnitId);
+      if (u.attackBuildingId != null) buildings.add(u.attackBuildingId);
+      if (u.attackKeep) keep = true;
+    }
+    for (const v of state.villagers) {
+      if (v.team !== this.homeSide || v.hp <= 0) continue;
+      if (v.targetEnemyId != null) units.add(v.targetEnemyId);
+    }
+    return { units, buildings, keep };
+  }
+
+  private ensureHpBar(obj: THREE.Object3D): THREE.Sprite {
+    let bar = obj.userData.hpBar as THREE.Sprite | undefined;
+    if (bar) return bar;
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 16;
+    const tex = new THREE.CanvasTexture(canvas);
+    bar = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
+    );
+    bar.position.y = 14.5;
+    bar.scale.set(12, 1.4, 1);
+    bar.renderOrder = 7;
+    bar.center.set(0.5, 0.5);
+    obj.add(bar);
+    obj.userData.hpBar = bar;
+    obj.userData.hpBarCanvas = canvas;
+    obj.userData.hpBarPct = -1;
+    return bar;
+  }
+
+  private paintHpBar(obj: THREE.Object3D, hp: number, maxHp: number, show: boolean) {
+    const bar = this.ensureHpBar(obj);
+    bar.visible = show;
+    if (!show) return;
+    const pct = Math.max(0, Math.min(1, hp / Math.max(1, maxHp)));
+    if (Math.abs(pct - (obj.userData.hpBarPct as number)) < 0.02) return;
+    obj.userData.hpBarPct = pct;
+    const canvas = obj.userData.hpBarCanvas as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, 128, 16);
+    ctx.fillStyle = "#1a1208";
+    ctx.fillRect(0, 0, 128, 16);
+    ctx.fillStyle = pct > 0.45 ? "#3ecf6a" : pct > 0.2 ? "#e0b03a" : "#e23b32";
+    ctx.fillRect(2, 2, Math.round(124 * pct), 12);
+    ctx.strokeStyle = "#fff6d8";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, 126, 14);
+    (bar.material as THREE.SpriteMaterial).map!.needsUpdate = true;
+  }
+
+  private syncInspireFx(obj: THREE.Object3D, u: Unit, time: number) {
+    const inspired = (u.rallyBuffTimer ?? 0) > 0;
+    let mark = obj.userData.inspireMark as THREE.Sprite | undefined;
+    if (!inspired) {
+      if (mark) mark.visible = false;
+      if (obj.userData.inspireGlow) {
+        obj.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || !m.material) return;
+          const mats = Array.isArray(m.material) ? m.material : [m.material];
+          for (const mat of mats) {
+            if ("emissive" in mat && mat.userData?.inspireTint) {
+              (mat as THREE.MeshStandardMaterial).emissive.setHex(0);
+              (mat as THREE.MeshStandardMaterial).emissiveIntensity = 0;
+              delete mat.userData.inspireTint;
+            }
+          }
+        });
+        obj.userData.inspireGlow = false;
+      }
+      return;
+    }
+    if (!mark) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext("2d")!;
+      ctx.clearRect(0, 0, 64, 64);
+      ctx.fillStyle = u.team === "you" ? "#6ea8ff" : "#ff7a6e";
+      ctx.beginPath();
+      ctx.moveTo(32, 8);
+      ctx.lineTo(48, 28);
+      ctx.lineTo(38, 28);
+      ctx.lineTo(38, 52);
+      ctx.lineTo(26, 52);
+      ctx.lineTo(26, 28);
+      ctx.lineTo(16, 28);
+      ctx.closePath();
+      ctx.fill();
+      mark = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: new THREE.CanvasTexture(canvas),
+          transparent: true,
+          depthTest: false,
+        }),
+      );
+      mark.position.y = 18;
+      mark.scale.set(5, 5, 1);
+      mark.renderOrder = 8;
+      obj.add(mark);
+      obj.userData.inspireMark = mark;
+    }
+    mark.visible = true;
+    mark.position.y = 17.5 + Math.sin(time * 4 + u.id) * 0.6;
+    (mark.material as THREE.SpriteMaterial).opacity = 0.55 + 0.35 * Math.sin(time * 5 + u.id);
+    if (!obj.userData.inspireGlow) {
+      const tint = u.team === "you" ? 0x2f6dff : 0xe23b32;
+      obj.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !m.material) return;
+        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        for (const mat of mats) {
+          if ("emissive" in mat) {
+            const std = mat as THREE.MeshStandardMaterial;
+            std.emissive.setHex(tint);
+            std.emissiveIntensity = 0.35;
+            std.userData = { ...std.userData, inspireTint: true };
+          }
+        }
+      });
+      obj.userData.inspireGlow = true;
+    } else {
+      obj.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !m.material) return;
+        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        for (const mat of mats) {
+          if ("emissiveIntensity" in mat && mat.userData?.inspireTint) {
+            (mat as THREE.MeshStandardMaterial).emissiveIntensity =
+              0.22 + 0.2 * Math.sin(time * 5 + u.id);
+          }
+        }
+      });
+    }
+  }
+
+  private syncUnitSelectionRing(obj: THREE.Object3D, selected: boolean) {
+    let ring = obj.userData.selection as THREE.Mesh | null;
+    if (!ring) {
+      ring = new THREE.Mesh(
+        new THREE.RingGeometry(5.8, 7.1, 28),
+        new THREE.MeshBasicMaterial({
+          color: 0x79d3ff,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.3;
+      ring.renderOrder = 3;
+      obj.add(ring);
+      obj.userData.selection = ring;
+    }
+    ring.visible = selected;
+  }
+
   private syncUnits(state: GameState) {
     const live = this.liveSet();
+    const selected = new Set(state.selectedUnitIds);
+    const engaged = this.engagedEnemyIds(state);
     for (const u of state.units) {
       const key = `unit-${u.id}`;
       live.add(key);
@@ -1898,6 +2077,10 @@ export class GameRenderer {
       const possessed = state.possessedId === u.id;
       const driven = possessed || u.facing != null;
       this.syncPossessMark(obj, u, driven);
+      this.syncUnitSelectionRing(obj, selected.has(u.id) && !driven);
+      this.syncInspireFx(obj, u, state.time);
+      const showEnemyHp = engaged.units.has(u.id) && u.team !== this.homeSide;
+      this.paintHpBar(obj, u.hp, u.maxHp, showEnemyHp);
       // Local FPS body → camera yaw; other driven peers → synced facing; else travel.
       const lookYaw = possessed ? this.fpsYaw : u.facing;
       this.faceMesh(obj, u.pos.x, u.pos.y, lookYaw);
@@ -1927,7 +2110,7 @@ export class GameRenderer {
     this.prune("unit-", live);
   }
 
-  /** Team ring, screen name, and a thin HP bar while this body is being driven. */
+  /** Team ring while this body is being driven. */
   private syncPossessMark(obj: THREE.Object3D, u: Unit, on: boolean) {
     let plate = obj.userData.possessPlate as THREE.Group | undefined;
     if (!on) {
@@ -1952,35 +2135,13 @@ export class GameRenderer {
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.35;
       ring.renderOrder = 3;
-      const name = new THREE.Sprite(
-        new THREE.SpriteMaterial({ transparent: true, depthTest: false }),
-      );
-      name.position.y = 16.2;
-      name.scale.set(16, 4.2, 1);
-      name.renderOrder = 6;
-      name.center.set(0.5, 0);
-      const bar = new THREE.Sprite(
-        new THREE.SpriteMaterial({ transparent: true, depthTest: false }),
-      );
-      bar.position.y = 15.2;
-      bar.scale.set(10, 0.7, 1);
-      bar.renderOrder = 6;
-      bar.center.set(0.5, 1);
-      plate.add(ring, name, bar);
+      plate.add(ring);
       obj.add(plate);
       obj.userData.possessPlate = plate;
-      obj.userData.possessName = name;
-      obj.userData.possessBar = bar;
-      obj.userData.possessNameText = "";
     }
     plate.visible = true;
     const ring = plate.children[0] as THREE.Mesh;
     (ring.material as THREE.MeshBasicMaterial).color.set(color);
-    // HP / power live in the top FPS HUD; keep only the ground ring on the mesh.
-    const name = obj.userData.possessName as THREE.Sprite | undefined;
-    const bar = obj.userData.possessBar as THREE.Sprite | undefined;
-    if (name) name.visible = false;
-    if (bar) bar.visible = false;
   }
 
   private syncVillagers(state: GameState) {

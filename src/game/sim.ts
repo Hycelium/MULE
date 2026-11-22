@@ -133,6 +133,7 @@ import { bestSelfPlayStyle, type AiStyle } from "./selfPlayBook";
 import { doctrineProfileForLanes, doctrineTune as savedDoctrineTune, type DoctrineTune } from "./doctrineTune";
 import type { ResourceBias } from "./doctrineAdapt";
 import {
+  FORMATION_OPTIONS,
   computeSquadFormation,
   computeWaveMarchTarget,
   separateFriendlyUnits,
@@ -163,6 +164,7 @@ import type {
   Building,
   BuildingKind,
   DefendLayerId,
+  FormationId,
   GameState,
   Lane,
   MapDef,
@@ -177,6 +179,8 @@ import type {
   Vec2,
   Villager,
 } from "./types";
+
+type ControlGroup = { peons: number[]; units: number[] };
 
 function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
@@ -247,7 +251,7 @@ export class GameSim {
     timeline: [],
   };
   private activeMap: MapDef;
-  private controlGroups = new Map<number, number[]>();
+  private controlGroups = new Map<number, ControlGroup>();
   private matchMode: "ai" | "pvp" | "arena" = "ai";
   private campaignMission: CampaignMission | null = null;
   private lastUnlock = "";
@@ -406,6 +410,7 @@ export class GameSim {
       buildSelection: null,
       selectedBuildingId: null,
       selectedVillagerIds: [],
+      selectedUnitIds: [],
       selectedKeepTeam: null,
       hoveredPadId: null,
       toasts: [],
@@ -426,6 +431,7 @@ export class GameSim {
       lastXpGain: 0,
       won: null,
       defendLayer: { you: null, foe: null },
+      formation: { you: "line", foe: "line" },
       arena: null,
       finalDuel: { phase: "off", proposedBy: null, life: { you: null, foe: null }, unitId: { you: null, foe: null } },
     };
@@ -440,6 +446,79 @@ export class GameSim {
       return;
     }
     this.applyDefendLayer(team, layer);
+  }
+
+  /**
+   * Set army formation shape. With selected troops, rearranges that selection
+   * around their centroid; otherwise updates the team default and re-slots the
+   * current hold layer.
+   */
+  setFormation(id: FormationId, team: Team = this.localTeam) {
+    if (team === this.localTeam && this.redirect({ t: "formation", team, id })) return;
+    this.applyFormation(team, id);
+  }
+
+  private applyFormation(team: Team, id: FormationId) {
+    this.state.formation[team] = id;
+    const selected = this.unitsById(team, this.state.selectedUnitIds).filter(
+      (u) => u.fromBarracks || u.kind === "trebuchet",
+    );
+    if (team === this.localTeam && selected.length > 0) {
+      this.arrangeUnitsInFormation(team, selected, id);
+      if (team === this.localTeam) {
+        const label = FORMATION_OPTIONS.find((o) => o.id === id)?.label ?? id;
+        this.addToast(`${label} formation.`);
+      }
+      return;
+    }
+    const layer = this.state.defendLayer[team];
+    if (layer && layer !== "assault") this.assignDefendRallies(team, layer);
+    if (team === this.localTeam) {
+      const label = FORMATION_OPTIONS.find((o) => o.id === id)?.label ?? id;
+      this.addToast(`${label} formation.`);
+    }
+  }
+
+  private arrangeUnitsInFormation(team: Team, squad: Unit[], formation: FormationId, anchor?: Vec2) {
+    if (squad.length === 0) return;
+    let ax = 0;
+    let ay = 0;
+    for (const u of squad) {
+      ax += u.pos.x;
+      ay += u.pos.y;
+    }
+    const center = anchor ?? { x: ax / squad.length, y: ay / squad.length };
+    const slots = computeSquadFormation(center, team, squad, {
+      formation,
+      fieldClamp: true,
+      hasNearbySiege: squad.some((u) => u.kind === "trebuchet" || u.kind === "rammer"),
+    });
+    for (const u of squad) {
+      const pt = slots.get(u.id);
+      if (!pt) continue;
+      this.clearUnitPlayerOrder(u);
+      u.playerOrdered = true;
+      u.rallyPoint = pt;
+      u.engageFrom = undefined;
+      u.aiHeldForRush = false;
+      u.aiStagingPoint = undefined;
+    }
+  }
+
+  private clearUnitPlayerOrder(u: Unit) {
+    u.playerOrdered = false;
+    u.attackTargetId = undefined;
+    u.attackBuildingId = undefined;
+    u.attackKeep = false;
+  }
+
+  private unitsById(team: Team, ids: number[]) {
+    const want = new Set(ids);
+    return this.state.units.filter((u) => u.team === team && u.hp > 0 && want.has(u.id));
+  }
+
+  private selectableUnit(u: Unit, team: Team) {
+    return u.team === team && u.hp > 0 && (u.fromBarracks || u.kind === "trebuchet") && u.kind !== "spy";
   }
 
   private applyDefendLayer(team: Team, layer: DefendLayerId | null) {
@@ -501,6 +580,7 @@ export class GameSim {
   private assignDefendRallies(team: Team, layer: DefendLayerId, preserveEngaged = false) {
     const seed = this.activeMap.seed;
     const lanes = mapLanes(seed);
+    const formation = this.state.formation[team] ?? "line";
     const troops = this.state.units
       .filter(
         (u) =>
@@ -508,6 +588,7 @@ export class GameSim {
           u.hp > 0 &&
           u.fromBarracks &&
           u.kind !== "trebuchet" &&
+          !u.playerOrdered &&
           !this.isPlayerDriven(u),
       )
       .sort((a, b) => a.id - b.id);
@@ -518,7 +599,14 @@ export class GameSim {
     );
     const trebBand = riverLayers(seed).find((b) => b.id === trebBelt);
     const trebs = this.state.units
-      .filter((u) => u.team === team && u.kind === "trebuchet" && !this.isPlayerDriven(u) && u.hp > 0)
+      .filter(
+        (u) =>
+          u.team === team &&
+          u.kind === "trebuchet" &&
+          !u.playerOrdered &&
+          !this.isPlayerDriven(u) &&
+          u.hp > 0,
+      )
       .sort((a, b) => a.id - b.id);
     const trebLaneIdx = new Map<Lane, number>();
     for (const u of trebs) {
@@ -674,6 +762,7 @@ export class GameSim {
       const slots = computeSquadFormation(group.anchor, team, group.squad, {
         hasNearbySiege: group.hasNearbySiege,
         tightBridge: group.tightBridge,
+        formation,
       });
       for (const u of group.squad) {
         const pt = slots.get(u.id);
@@ -911,6 +1000,32 @@ export class GameSim {
     if (order.t === "gather") {
       this.commandIds(team, order.ids, { x: 0, y: 0 }, { kind: "node", id: order.nodeId }, false);
       this.holdPrediction(order.ids);
+      return;
+    }
+    if (order.t === "formation") {
+      this.applyFormation(team, order.id);
+      return;
+    }
+    if (order.t === "unitMove") {
+      this.commandUnitIds(team, order.ids, { x: order.x, y: order.y }, null);
+      return;
+    }
+    if (order.t === "unitAttack") {
+      this.commandUnitIds(team, order.ids, { x: 0, y: 0 }, { kind: "unit", id: String(order.targetId) });
+      return;
+    }
+    if (order.t === "unitAttackBuilding") {
+      this.commandUnitIds(team, order.ids, { x: 0, y: 0 }, {
+        kind: "building",
+        id: String(order.buildingId),
+      });
+      return;
+    }
+    if (order.t === "unitAttackKeep") {
+      this.commandUnitIds(team, order.ids, { x: 0, y: 0 }, {
+        kind: "keep",
+        id: team === "you" ? "foe" : "you",
+      });
     }
   }
 
@@ -1661,6 +1776,7 @@ export class GameSim {
     this.state.buildSelection = kind;
     this.state.selectedBuildingId = null;
     this.state.selectedVillagerIds = [];
+    this.state.selectedUnitIds = [];
     this.state.selectedKeepTeam = null;
   }
 
@@ -1668,6 +1784,7 @@ export class GameSim {
     this.state.buildSelection = null;
     this.state.selectedBuildingId = null;
     this.state.selectedVillagerIds = [];
+    this.state.selectedUnitIds = [];
     this.state.selectedKeepTeam = null;
   }
 
@@ -1680,6 +1797,7 @@ export class GameSim {
     if (!hit) {
       this.state.selectedBuildingId = null;
       this.state.selectedVillagerIds = [];
+      this.state.selectedUnitIds = [];
       this.state.selectedKeepTeam = null;
       return;
     }
@@ -1687,6 +1805,16 @@ export class GameSim {
       const id = Number(hit.id);
       const peon = this.state.villagers.find((v) => v.id === id && v.team === this.localTeam && v.hp > 0);
       this.state.selectedVillagerIds = peon ? [peon.id] : [];
+      this.state.selectedUnitIds = [];
+      this.state.selectedBuildingId = null;
+      this.state.selectedKeepTeam = null;
+      return;
+    }
+    if (hit.kind === "unit") {
+      const id = Number(hit.id);
+      const unit = this.state.units.find((u) => u.id === id && this.selectableUnit(u, this.localTeam));
+      this.state.selectedUnitIds = unit ? [unit.id] : [];
+      this.state.selectedVillagerIds = [];
       this.state.selectedBuildingId = null;
       this.state.selectedKeepTeam = null;
       return;
@@ -1709,6 +1837,7 @@ export class GameSim {
       this.state.selectedKeepTeam = this.localTeam;
       this.state.selectedBuildingId = null;
       this.state.selectedVillagerIds = [];
+      this.state.selectedUnitIds = [];
       this.state.buildSelection = null;
       return;
     }
@@ -1720,6 +1849,7 @@ export class GameSim {
       const id = Number(hit.id);
       this.state.selectedBuildingId = Number.isNaN(id) ? null : id;
       this.state.selectedVillagerIds = [];
+      this.state.selectedUnitIds = [];
       this.state.selectedKeepTeam = null;
       this.state.buildSelection = null;
     }
@@ -1730,7 +1860,7 @@ export class GameSim {
     const maxX = Math.max(a.x, b.x);
     const minY = Math.min(a.y, b.y);
     const maxY = Math.max(a.y, b.y);
-    const ids = this.state.villagers
+    const peonIds = this.state.villagers
       .filter(
         (v) =>
           v.team === this.localTeam &&
@@ -1741,9 +1871,22 @@ export class GameSim {
           v.pos.y <= maxY,
       )
       .map((v) => v.id);
+    const unitIds = this.state.units
+      .filter(
+        (u) =>
+          this.selectableUnit(u, this.localTeam) &&
+          u.pos.x >= minX &&
+          u.pos.x <= maxX &&
+          u.pos.y >= minY &&
+          u.pos.y <= maxY,
+      )
+      .map((u) => u.id);
     this.state.selectedVillagerIds = additive
-      ? [...new Set([...this.state.selectedVillagerIds, ...ids])]
-      : ids;
+      ? [...new Set([...this.state.selectedVillagerIds, ...peonIds])]
+      : peonIds;
+    this.state.selectedUnitIds = additive
+      ? [...new Set([...this.state.selectedUnitIds, ...unitIds])]
+      : unitIds;
     this.state.selectedBuildingId = null;
     this.state.selectedKeepTeam = null;
     this.state.buildSelection = null;
@@ -1751,16 +1894,27 @@ export class GameSim {
 
   useControlGroup(slot: number, assign: boolean) {
     if (assign) {
-      this.controlGroups.set(slot, [...this.state.selectedVillagerIds]);
-      if (this.state.selectedVillagerIds.length > 0) this.addToast(`Control group ${slot} set.`);
-      return this.state.selectedVillagerIds.length > 0;
+      const group: ControlGroup = {
+        peons: [...this.state.selectedVillagerIds],
+        units: [...this.state.selectedUnitIds],
+      };
+      this.controlGroups.set(slot, group);
+      const n = group.peons.length + group.units.length;
+      if (n > 0) this.addToast(`Control group ${slot} set.`);
+      return n > 0;
     }
-    const alive = new Set(
+    const alivePeons = new Set(
       this.state.villagers.filter((v) => v.team === this.localTeam && v.hp > 0).map((v) => v.id),
     );
-    const ids = (this.controlGroups.get(slot) ?? []).filter((id) => alive.has(id));
-    if (ids.length === 0) return false;
-    this.state.selectedVillagerIds = ids;
+    const aliveUnits = new Set(
+      this.state.units.filter((u) => this.selectableUnit(u, this.localTeam)).map((u) => u.id),
+    );
+    const group = this.controlGroups.get(slot) ?? { peons: [], units: [] };
+    const peons = group.peons.filter((id) => alivePeons.has(id));
+    const units = group.units.filter((id) => aliveUnits.has(id));
+    if (peons.length === 0 && units.length === 0) return false;
+    this.state.selectedVillagerIds = peons;
+    this.state.selectedUnitIds = units;
     this.state.selectedBuildingId = null;
     this.state.selectedKeepTeam = null;
     return true;
@@ -1814,7 +1968,35 @@ export class GameSim {
   commandSelected(world: { x: number; y: number }, hit: RectHit | null, patrol = false) {
     const team = this.localTeam;
     const selected = this.peonsById(team, this.state.selectedVillagerIds);
+    const selectedUnits = this.unitsById(team, this.state.selectedUnitIds).filter((u) =>
+      this.selectableUnit(u, team),
+    );
     if (this.orderSink && !this.applyingRemote) {
+      if (selectedUnits.length > 0) {
+        const ids = selectedUnits.map((u) => u.id);
+        if (hit?.kind === "unit") {
+          const enemyTeam: Team = team === "you" ? "foe" : "you";
+          const unit = this.state.units.find((u) => u.id === Number(hit.id) && u.team === enemyTeam && u.hp > 0);
+          if (unit) {
+            this.redirect({ t: "unitAttack", team, ids, targetId: unit.id });
+            return;
+          }
+        }
+        if (hit?.kind === "building") {
+          const enemyTeam: Team = team === "you" ? "foe" : "you";
+          const b = this.state.buildings.find((x) => x.id === Number(hit.id) && x.team === enemyTeam && x.hp > 0);
+          if (b) {
+            this.redirect({ t: "unitAttackBuilding", team, ids, buildingId: b.id });
+            return;
+          }
+        }
+        if (hit?.kind === "keep" && hit.id !== team) {
+          this.redirect({ t: "unitAttackKeep", team, ids });
+          return;
+        }
+        this.redirect({ t: "unitMove", team, ids, x: world.x, y: world.y });
+        return;
+      }
       if (selected.length === 0) {
         const barracks = this.state.buildings.find(
           (b) => b.id === this.state.selectedBuildingId && b.team === team && this.isTrainHall(b.kind),
@@ -1838,6 +2020,15 @@ export class GameSim {
       this.redirect({ t: patrol ? "patrol" : "move", team, ids, x: world.x, y: world.y });
       return;
     }
+    if (selectedUnits.length > 0) {
+      this.commandUnitIds(
+        team,
+        selectedUnits.map((u) => u.id),
+        world,
+        hit,
+      );
+      return;
+    }
     if (selected.length === 0) {
       const barracks = this.state.buildings.find(
         (b) => b.id === this.state.selectedBuildingId && b.team === team && this.isTrainHall(b.kind),
@@ -1852,6 +2043,75 @@ export class GameSim {
       hit,
       patrol,
     );
+  }
+
+  private commandUnitIds(team: Team, ids: number[], world: { x: number; y: number }, hit: RectHit | null) {
+    const selected = this.unitsById(team, ids).filter((u) => this.selectableUnit(u, team));
+    if (selected.length === 0) return;
+    const enemyTeam: Team = team === "you" ? "foe" : "you";
+    const formation = this.state.formation[team] ?? "line";
+
+    if (hit?.kind === "unit") {
+      const enemy = this.state.units.find((u) => u.id === Number(hit.id) && u.team === enemyTeam && u.hp > 0);
+      if (enemy) {
+        for (const u of selected) {
+          this.clearUnitPlayerOrder(u);
+          u.playerOrdered = true;
+          u.attackTargetId = enemy.id;
+          u.rallyPoint = undefined;
+          u.engageFrom = undefined;
+          u.aiHeldForRush = false;
+          u.aiStagingPoint = undefined;
+        }
+        this.state.commandMarkers.push({ id: this.next(), kind: "attack", pos: { ...enemy.pos }, life: 1.1 });
+        return;
+      }
+    }
+
+    if (hit?.kind === "building") {
+      const b = this.state.buildings.find((x) => x.id === Number(hit.id) && x.team === enemyTeam && x.hp > 0);
+      if (b) {
+        for (const u of selected) {
+          this.clearUnitPlayerOrder(u);
+          u.playerOrdered = true;
+          u.attackBuildingId = b.id;
+          u.rallyPoint = undefined;
+          u.engageFrom = undefined;
+        }
+        this.state.commandMarkers.push({ id: this.next(), kind: "attack", pos: { ...b.pos }, life: 1.1 });
+        return;
+      }
+    }
+
+    if (hit?.kind === "keep" && hit.id === enemyTeam) {
+      const keep = this.teamKeep(enemyTeam);
+      for (const u of selected) {
+        this.clearUnitPlayerOrder(u);
+        u.playerOrdered = true;
+        u.attackKeep = true;
+        u.rallyPoint = { ...keep.pos };
+        u.engageFrom = undefined;
+      }
+      this.state.commandMarkers.push({ id: this.next(), kind: "attack", pos: { ...keep.pos }, life: 1.1 });
+      return;
+    }
+
+    const slots = computeSquadFormation(world, team, selected, {
+      formation,
+      fieldClamp: true,
+      hasNearbySiege: selected.some((u) => u.kind === "trebuchet" || u.kind === "rammer"),
+    });
+    for (const u of selected) {
+      const pt = slots.get(u.id) ?? world;
+      this.clearUnitPlayerOrder(u);
+      u.playerOrdered = true;
+      u.rallyPoint = { ...pt };
+      u.engageFrom = undefined;
+      u.aiHeldForRush = false;
+      u.aiStagingPoint = undefined;
+      u.targetUnitId = undefined;
+    }
+    this.state.commandMarkers.push({ id: this.next(), kind: "move", pos: { ...world }, life: 1.1 });
   }
 
   private commandIds(
@@ -1934,8 +2194,16 @@ export class GameSim {
   }
 
   stopSelectedVillagers() {
-    if (this.redirect({ t: "stop", team: this.localTeam, ids: [...this.state.selectedVillagerIds] })) return;
+    if (
+      this.redirect({
+        t: "stop",
+        team: this.localTeam,
+        ids: [...this.state.selectedVillagerIds, ...this.state.selectedUnitIds],
+      })
+    )
+      return;
     this.stopIds(this.localTeam, this.state.selectedVillagerIds);
+    this.stopUnitIds(this.localTeam, this.state.selectedUnitIds);
   }
 
   private stopIds(team: Team, ids: number[]) {
@@ -1951,6 +2219,22 @@ export class GameSim {
       held += 1;
     }
     if (held > 0) this.tell(team, "Selected peons stopped.");
+  }
+
+  private stopUnitIds(team: Team, ids: number[]) {
+    const want = new Set(ids);
+    let held = 0;
+    for (const u of this.state.units) {
+      if (u.team !== team || !want.has(u.id) || u.hp <= 0) continue;
+      if (!this.selectableUnit(u, team)) continue;
+      this.clearUnitPlayerOrder(u);
+      u.playerOrdered = true;
+      u.rallyPoint = { ...u.pos };
+      u.engageFrom = undefined;
+      u.targetUnitId = undefined;
+      held += 1;
+    }
+    if (held > 0) this.tell(team, "Selected troops holding.");
   }
 
   /** Direct barricade placement (touch radial menu) — no build-mode round trip. */
@@ -2404,7 +2688,10 @@ export class GameSim {
           x.rallyPoint &&
           dist(x.rallyPoint, barracks.rallyPoint!) <= 46,
       );
-      const slots = computeSquadFormation(barracks.rallyPoint, team, rallied);
+      const slots = computeSquadFormation(barracks.rallyPoint, team, rallied, {
+        formation: this.state.formation[team] ?? "line",
+        fieldClamp: true,
+      });
       for (const member of rallied) {
         const pt = slots.get(member.id);
         if (pt) member.rallyPoint = pt;
@@ -3063,7 +3350,165 @@ export class GameSim {
     return best;
   }
 
+  /** RTS-ordered barracks troop: move to rally / chase assigned target. */
+  private stepPlayerOrderedTroop(u: Unit, team: Team, dt: number) {
+    const enemyTeam = this.enemy(team);
+    if (u.attackTargetId != null) {
+      const target = this.state.units.find((e) => e.id === u.attackTargetId && e.hp > 0);
+      if (!target) {
+        u.attackTargetId = undefined;
+      } else {
+        u.targetUnitId = target.id;
+        this.fightMilitary(u, target, team, dt);
+        return;
+      }
+    }
+    if (u.attackBuildingId != null) {
+      const b = this.state.buildings.find((x) => x.id === u.attackBuildingId && x.hp > 0);
+      if (!b) {
+        u.attackBuildingId = undefined;
+      } else {
+        const reach = u.kind === "archer" ? ARCHER_RANGE : 22;
+        if (dist(u.pos, b.pos) > reach) {
+          moveTowards(u.pos, b.pos, u.speed, dt);
+          return;
+        }
+        if (u.attackTimer <= 0) {
+          const dealt = u.damage * (this.inChurchAura(u) ? CHURCH_AURA_DAMAGE : 1);
+          b.hp -= dealt;
+          u.attackTimer = u.attackCooldown;
+          this.emitCombat(u.kind === "archer" ? "arrow" : "meleeHit", u.pos, b.pos, team);
+          this.addFloat(`-${Math.round(dealt)}`, b.pos.x, b.pos.y - 8, "#e8d39a");
+          if (b.hp <= 0) this.wreckBuilding(b, u);
+        }
+        return;
+      }
+    }
+    if (u.attackKeep) {
+      const keep = this.teamKeep(enemyTeam);
+      const gateY = laneYGate(team);
+      const atGate = team === "you" ? u.pos.y <= gateY + 8 : u.pos.y >= gateY - 8;
+      if (!atGate) {
+        moveTowards(u.pos, keep.pos, u.speed, dt);
+        return;
+      }
+      if (u.attackTimer <= 0) {
+        const dmg = u.damage * u.keepMult;
+        keep.hp -= dmg;
+        keep.hitFlash = 0.2;
+        this.emitCombat(u.kind === "rammer" ? "ramImpact" : "keepImpact", u.pos, keep.pos, team);
+        if (enemyTeam === "you") {
+          this.state.redFlash = 0.18;
+          this.state.shake = 0.15;
+        }
+        u.attackTimer = u.attackCooldown + u.siegeGap;
+        this.addFloat(`-${Math.round(dmg)}`, keep.pos.x, keep.pos.y - 18, "#ff9d9d");
+      }
+      return;
+    }
+    if (u.rallyPoint) {
+      if (dist(u.pos, u.rallyPoint) > 2.2) {
+        moveTowards(u.pos, u.rallyPoint, u.speed, dt);
+      } else {
+        u.pos.x = u.rallyPoint.x;
+        u.pos.y = u.rallyPoint.y;
+      }
+      return;
+    }
+  }
+
+  /** Free-field siege move (no road pin) for player-ordered trebuchets. */
+  private marchSiegeFree(u: Unit, dest: Vec2, dt: number) {
+    moveTowards(u.pos, dest, u.speed, dt);
+    const { minX, maxX } = mapBounds(this.activeMap.seed);
+    u.pos.x = Math.max(minX + 10, Math.min(maxX - 10, u.pos.x));
+    u.pos.y = Math.max(18, Math.min(WORLD_H - 18, u.pos.y));
+  }
+
+  private playerTrebAim(u: Unit): { pos: Vec2; inRange: boolean; fire: () => void } | null {
+    const reach = TREBUCHET_RANGE;
+    if (u.attackTargetId != null) {
+      const target = this.state.units.find((e) => e.id === u.attackTargetId && e.hp > 0);
+      if (!target) {
+        u.attackTargetId = undefined;
+        return null;
+      }
+      const d = dist(u.pos, target.pos);
+      return {
+        pos: target.pos,
+        inRange: d <= reach,
+        fire: () => this.trebuchetHitUnit(u, target),
+      };
+    }
+    if (u.attackBuildingId != null) {
+      const b = this.state.buildings.find((x) => x.id === u.attackBuildingId && x.hp > 0);
+      if (!b) {
+        u.attackBuildingId = undefined;
+        return null;
+      }
+      const d = dist(u.pos, b.pos);
+      return {
+        pos: b.pos,
+        inRange: d <= reach,
+        fire: () => this.trebuchetHitBuilding(u, b),
+      };
+    }
+    if (u.attackKeep) {
+      const keep = this.teamKeep(this.enemy(u.team));
+      const d = dist(u.pos, keep.pos);
+      return {
+        pos: keep.pos,
+        inRange: d <= reach,
+        fire: () => {
+          const dmg = trebuchetShot(keep.maxHp);
+          keep.hp -= dmg;
+          keep.hitFlash = 0.2;
+          this.emitCombat("trebuchet", u.pos, keep.pos, u.team);
+          this.addFloat(`-${dmg}`, keep.pos.x, keep.pos.y - 18, "#ff9d9d");
+          if (keep.team === "you") {
+            this.state.redFlash = 0.18;
+            this.state.shake = 0.15;
+          }
+        },
+      };
+    }
+    return null;
+  }
+
+  private stepPlayerTrebuchet(u: Unit, _team: Team, dt: number) {
+    const orderedAim = this.playerTrebAim(u);
+    if (orderedAim) {
+      if (!orderedAim.inRange) {
+        this.driveSiegeStance(u, dt, true);
+        if (u.siegePhase === "packed") this.marchSiegeFree(u, orderedAim.pos, dt);
+        return;
+      }
+      this.driveSiegeStance(u, dt, false);
+      if (u.siegePhase === "ready" && u.attackTimer <= 0) {
+        orderedAim.fire();
+        u.attackTimer = u.attackCooldown;
+      }
+      return;
+    }
+    if (u.rallyPoint) {
+      if (dist(u.pos, u.rallyPoint) > 5) {
+        this.driveSiegeStance(u, dt, true);
+        if (u.siegePhase === "packed") this.marchSiegeFree(u, u.rallyPoint, dt);
+      } else {
+        this.driveSiegeStance(u, dt, true);
+        u.pos.x = u.rallyPoint.x;
+        u.pos.y = u.rallyPoint.y;
+      }
+      return;
+    }
+    this.driveSiegeStance(u, dt, true);
+  }
+
   private stepTrebuchet(u: Unit, team: Team, dt: number) {
+    if (u.playerOrdered) {
+      this.stepPlayerTrebuchet(u, team, dt);
+      return;
+    }
     const aimNow = this.pickTrebuchetAim(u);
     if (aimNow?.inRange && this.insideEnemyTowerRange(u.pos, team)) {
       this.driveSiegeStance(u, dt, true);
@@ -3920,18 +4365,21 @@ export class GameSim {
       const { minX, maxX } = mapBounds(this.activeMap.seed);
       u.pos.x = Math.max(minX + 10, Math.min(maxX - 10, u.pos.x));
       u.pos.y = Math.max(18, Math.min(WORLD_H - 18, u.pos.y));
-      const lanes = mapLanes(this.activeMap.seed);
-      let bestLane = u.lane;
-      let bestD = Infinity;
-      for (const lane of lanes) {
-        const x = lanePathX(this.activeMap.seed, u.team, lane, u.pos.y);
-        const gap = Math.abs(x - u.pos.x);
-        if (gap < bestD) {
-          bestD = gap;
-          bestLane = lane;
+      // Trebuchets stay free of the road while possessed so the player can park anywhere.
+      if (u.kind !== "trebuchet") {
+        const lanes = mapLanes(this.activeMap.seed);
+        let bestLane = u.lane;
+        let bestD = Infinity;
+        for (const lane of lanes) {
+          const x = lanePathX(this.activeMap.seed, u.team, lane, u.pos.y);
+          const gap = Math.abs(x - u.pos.x);
+          if (gap < bestD) {
+            bestD = gap;
+            bestLane = lane;
+          }
         }
+        u.lane = bestLane;
       }
-      u.lane = bestLane;
     }
     u.rallyPoint = undefined;
     u.engageFrom = undefined;
@@ -3982,6 +4430,10 @@ export class GameSim {
         continue;
       }
       if (u.kind === "runner" && !this.runnerInMelee(u)) u.chargeReady = true;
+      if (u.playerOrdered && u.fromBarracks) {
+        this.stepPlayerOrderedTroop(u, team, dt);
+        continue;
+      }
       const gateY = laneYGate(team);
       const enemies = this.state.units.filter((e) => e.team === enemyTeam && e.lane === u.lane);
       // Road siege engines block the lane — waves and soldiers stop to break them.
@@ -4021,9 +4473,13 @@ export class GameSim {
         const holdingLayer =
           this.state.defendLayer[u.team] != null && this.state.defendLayer[u.team] !== "assault";
         if (u.rallyPoint) {
-          if (dist(u.pos, u.rallyPoint) > 3.5) {
+          const dHold = dist(u.pos, u.rallyPoint);
+          if (dHold > 2.2) {
             moveTowards(u.pos, u.rallyPoint, u.speed, dt);
           } else {
+            // Snap to slot and stay put — avoids separation/flash jitter.
+            u.pos.x = u.rallyPoint.x;
+            u.pos.y = u.rallyPoint.y;
             const onPad =
               this.cpuStyle[u.team] === "doctrine" &&
               this.getPads(this.enemyOf(u.team)).some(
@@ -4417,6 +4873,7 @@ export class GameSim {
     s.commandMarkers = [];
     s.selectedBuildingId = null;
     s.selectedVillagerIds = [];
+    s.selectedUnitIds = [];
     s.selectedKeepTeam = null;
     s.buildSelection = null;
     s.arena = { playerUnitId: null, respawns: [], duel: true };
@@ -5110,6 +5567,10 @@ export class GameSim {
     this.cleanupDeadPeons();
     const livingPeons = new Set(s.villagers.filter((v) => v.team === this.localTeam && v.hp > 0).map((v) => v.id));
     s.selectedVillagerIds = s.selectedVillagerIds.filter((id) => livingPeons.has(id));
+    const livingUnits = new Set(
+      s.units.filter((u) => this.selectableUnit(u, this.localTeam)).map((u) => u.id),
+    );
+    s.selectedUnitIds = s.selectedUnitIds.filter((id) => livingUnits.has(id));
 
     if (s.keeps.you.hp <= 0 && s.keeps.foe.hp <= 0) {
       this.finishMatch("Stalemate. Both keeps are broken.", null);
@@ -5650,6 +6111,27 @@ export class GameSim {
         case "defend":
           this.applyDefendLayer(team, order.layer);
           break;
+        case "formation":
+          this.applyFormation(team, order.id);
+          break;
+        case "unitMove":
+          this.commandUnitIds(team, order.ids, { x: order.x, y: order.y }, null);
+          break;
+        case "unitAttack":
+          this.commandUnitIds(team, order.ids, { x: 0, y: 0 }, { kind: "unit", id: String(order.targetId) });
+          break;
+        case "unitAttackBuilding":
+          this.commandUnitIds(team, order.ids, { x: 0, y: 0 }, {
+            kind: "building",
+            id: String(order.buildingId),
+          });
+          break;
+        case "unitAttackKeep":
+          this.commandUnitIds(team, order.ids, { x: 0, y: 0 }, {
+            kind: "keep",
+            id: team === "you" ? "foe" : "you",
+          });
+          break;
         case "barricade":
           this.tryPlaceBarricade({ x: order.x, y: order.y }, team, order.builderId);
           break;
@@ -6009,6 +6491,7 @@ export class GameSim {
     const prevPossessed = s.possessedId;
     this.notePoseGap();
     const selectedVillagerIds = s.selectedVillagerIds;
+    const selectedUnitIds = s.selectedUnitIds;
     const selectedBuildingId = s.selectedBuildingId;
     const selectedKeepTeam = s.selectedKeepTeam;
     const buildSelection = s.buildSelection;
@@ -6237,12 +6720,17 @@ export class GameSim {
     s.selectedKeepTeam = selectedKeepTeam;
     const living = new Set(s.villagers.filter((v) => v.team === this.localTeam && v.hp > 0).map((v) => v.id));
     s.selectedVillagerIds = selectedVillagerIds.filter((id) => living.has(id));
+    const livingUnits = new Set(
+      s.units.filter((u) => this.selectableUnit(u, this.localTeam)).map((u) => u.id),
+    );
+    s.selectedUnitIds = selectedUnitIds.filter((id) => livingUnits.has(id));
     s.selectedBuildingId = s.buildings.some((b) => b.id === selectedBuildingId) ? selectedBuildingId : null;
     if (this.pendingOwnPad) {
       const raised = s.buildings.find((b) => b.padId === this.pendingOwnPad && b.team === this.localTeam);
       if (raised) {
         s.selectedBuildingId = raised.id;
         s.selectedVillagerIds = [];
+        s.selectedUnitIds = [];
         s.selectedKeepTeam = null;
         s.buildSelection = null;
         this.pendingOwnPad = null;
@@ -6348,6 +6836,7 @@ export class GameSim {
       selectedBuildingKind: selected?.kind ?? null,
       selectedKeepTeam: s.selectedKeepTeam,
       selectedPeonCount: s.selectedVillagerIds.length,
+      selectedUnitCount: s.selectedUnitIds.length,
       selectedRanks: selected ? { damage: selected.damageRank + 1, rate: selected.rateRank + 1 } : null,
       selectedCanUpgradeDamage: canUpgradeStructure && selected!.damageRank < 2,
       selectedCanUpgradeRate: canUpgradeStructure && selected!.rateRank < 2,
@@ -6424,6 +6913,8 @@ export class GameSim {
         : null,
       defendLayer: s.defendLayer[view],
       defendLayers: defendLayerOptions(mapView.seed),
+      formation: s.formation[view] ?? "line",
+      formations: FORMATION_OPTIONS.map((o) => ({ id: o.id, label: o.label, hint: o.hint })),
       arena: this.matchMode === "arena" || !!s.arena,
       arenaRung: (() => {
         if (body) return body.arenaRung ?? 0;

@@ -10,6 +10,7 @@ import { DetailSheet } from "./ui/DetailSheet";
 import { KeepTugBar } from "./ui/KeepTugBar";
 import { Overlays } from "./ui/Overlays";
 import { CampaignMap } from "./ui/CampaignMap";
+import { FORMATION_OPTIONS } from "./game/formation";
 import { ControlCluster, type ClusterAction } from "./ui/ControlCluster";
 import { RadialMenu, type RadialItem } from "./ui/RadialMenu";
 import { useHints } from "./ui/hints";
@@ -53,6 +54,7 @@ const defaultUi: UiSnapshot = {
   selectedBuildingKind: null,
   selectedKeepTeam: null,
   selectedPeonCount: 0,
+  selectedUnitCount: 0,
   selectedRanks: null,
   selectedCanUpgradeDamage: false,
   selectedCanUpgradeRate: false,
@@ -100,6 +102,8 @@ const defaultUi: UiSnapshot = {
   possessed: null,
   defendLayer: null,
   defendLayers: [],
+  formation: "line",
+  formations: [],
   arena: false,
   arenaRung: 0,
   arenaRungMax: 5,
@@ -806,6 +810,24 @@ export default function App() {
         }
         return;
       }
+      const formHotkeys = ["F1", "F2", "F3", "F4"] as const;
+      const formIdx = formHotkeys.indexOf(ev.key as (typeof formHotkeys)[number]);
+      if (formIdx >= 0 && FORMATION_OPTIONS[formIdx]) {
+        ev.preventDefault();
+        sim.setFormation(FORMATION_OPTIONS[formIdx]!.id);
+        refreshUi();
+        return;
+      }
+      const troopsSelected = sim.getState().selectedUnitIds.length > 0;
+      if (troopsSelected && /^[1-4]$/.test(ev.key)) {
+        const id = FORMATION_OPTIONS[Number(ev.key) - 1]?.id;
+        if (id) {
+          ev.preventDefault();
+          sim.setFormation(id);
+          refreshUi();
+          return;
+        }
+      }
       const slot = /^[1-9]$/.test(ev.key) ? Number(ev.key) : 0;
       let groupHandled = false;
       if (slot > 0 && (ev.ctrlKey || ev.metaKey)) {
@@ -1136,6 +1158,24 @@ export default function App() {
           sim.setDefendLayer(ui.defendLayer === layer.id ? null : layer.id);
           refreshUi();
           beep(ui.defendLayer === layer.id ? 260 : 420);
+        },
+      });
+    }
+    for (const form of ui.formations) {
+      clusterActions.push({
+        id: `form-${form.id}`,
+        icon: "▣",
+        label: form.label,
+        hint:
+          ui.selectedUnitCount > 0
+            ? `${form.hint} — rearrange selection`
+            : `${form.hint} — army default (F1–F4)`,
+        active: ui.formation === form.id,
+        disabled: ui.phase !== "running",
+        onPress: () => {
+          sim.setFormation(form.id);
+          refreshUi();
+          beep(360);
         },
       });
     }
