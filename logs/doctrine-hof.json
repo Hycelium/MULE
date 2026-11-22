@@ -245,6 +245,91 @@
           "siegeTrebCap": 3
         }
       }
+    },
+    {
+      "id": "league-2026-11-22T01:43:15",
+      "savedAt": "2026-11-22T01:43:15.141Z",
+      "summary": {
+        "humanGhosts": "13/13",
+        "cheeseBots": "15/15",
+        "cpuGauntlet": "47/48",
+        "holdoutMirrors": {
+          "wins": 2,
+          "losses": 2,
+          "total": 6
+        }
+      },
+      "profiles": {
+        "1": {
+          "attackAt": 20,
+          "trebGoal": 2,
+          "ramGoal": 7,
+          "spyGoal": 3,
+          "escortGap": 38,
+          "standoff": 175,
+          "padGuards": 0,
+          "barracksGoal": 1,
+          "ballistaGoal": 1,
+          "wardPct": 35,
+          "archerPct": 25,
+          "earlyScreen": 2,
+          "ecoFirst": 1,
+          "barricades": 1,
+          "churchGoal": 2,
+          "midStageAt": 14,
+          "fortressPush": 30,
+          "retreatKeepHp": 0.45,
+          "greedDrop": 5,
+          "churchSaveAt": 220,
+          "siegeTrebCap": 3
+        },
+        "2": {
+          "attackAt": 20,
+          "trebGoal": 2,
+          "ramGoal": 6,
+          "spyGoal": 1,
+          "escortGap": 34,
+          "standoff": 175,
+          "padGuards": 0,
+          "barracksGoal": 1,
+          "ballistaGoal": 1,
+          "wardPct": 50,
+          "archerPct": 25,
+          "earlyScreen": 2,
+          "ecoFirst": 1,
+          "barricades": 1,
+          "churchGoal": 2,
+          "midStageAt": 10,
+          "fortressPush": 26,
+          "retreatKeepHp": 0.45,
+          "greedDrop": 6,
+          "churchSaveAt": 280,
+          "siegeTrebCap": 3
+        },
+        "3": {
+          "attackAt": 17,
+          "trebGoal": 2,
+          "ramGoal": 4,
+          "spyGoal": 1,
+          "escortGap": 34,
+          "standoff": 175,
+          "padGuards": 0,
+          "barracksGoal": 1,
+          "ballistaGoal": 1,
+          "wardPct": 40,
+          "archerPct": 30,
+          "earlyScreen": 3,
+          "ecoFirst": 1,
+          "barricades": 1,
+          "churchGoal": 2,
+          "midStageAt": 9,
+          "fortressPush": 27,
+          "retreatKeepHp": 0.42,
+          "greedDrop": 9,
+          "churchSaveAt": 280,
+          "siegeTrebCap": 3
+        }
+      }
     }
   ]
 }

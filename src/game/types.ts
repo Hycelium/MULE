@@ -16,8 +16,6 @@ export type Lane = 0 | 1 | 2;
 export type LaneCount = 1 | 2 | 3;
 /** Troop stance: own keep, river belts, or enemy keep. */
 export type DefendLayerId = "keep" | "home" | "mid" | "forward" | "assault";
-/** Army / selection formation shape. */
-export type FormationId = "line" | "stagger" | "box" | "split";
 
 export interface Vec2 {
   x: number;
@@ -75,14 +73,6 @@ export interface Unit {
   rallyCooldown?: number;
   /** Seconds of Rally haste remaining (attack 25% faster). */
   rallyBuffTimer?: number;
-  /** Player issued an RTS move/attack; skips auto lane AI until cleared. */
-  playerOrdered?: boolean;
-  /** Forced attack target (enemy unit) from an RTS order. */
-  attackTargetId?: number;
-  /** Forced attack target (enemy building) from an RTS order. */
-  attackBuildingId?: number;
-  /** Forced attack on the enemy keep. */
-  attackKeep?: boolean;
   /** Arena gun-game ladder index (0 = peon … 4 = runner). */
   arenaRung?: number;
   /** Arena kills scored by this fighter (career). */
@@ -96,6 +86,26 @@ export interface Unit {
    * Synced over skirmish so peers see turn-in-place; cleared when undriven.
    */
   facing?: number;
+  /** Cohesive wave batch id (same wave + lane + team) so wave troops march in formation. */
+  waveBatchId?: number;
+  /** Friendly unit id this barracks unit is guarding & following (AoE2 guard). */
+  guardUnitId?: number;
+  /** Explicit AoE2 right-click attack target (enemy unit id). */
+  orderTargetUnitId?: number;
+  /** Explicit AoE2 right-click attack target (enemy building id). */
+  orderTargetBuildingId?: number;
+  /** Explicit AoE2 right-click attack target (enemy barricade id). */
+  orderTargetBarricadeId?: number;
+  /** Explicit AoE2 right-click attack target (enemy keep). */
+  orderTargetKeep?: boolean;
+  /** AoE2 patrol route endpoints. */
+  patrolA?: Vec2;
+  patrolB?: Vec2;
+  patrolToB?: boolean;
+  /** Stand ground: hold formation position and only fight enemies within reach. */
+  holdPosition?: boolean;
+  /** True when the player issued a direct micro order (move/guard/attack/patrol/hold). */
+  manualOrder?: boolean;
 }
 
 /** First-person body the local player is driving, or none. */
@@ -201,10 +211,27 @@ export interface Villager {
   maxHp: number;
   /** Melee damage. AI peons carry the current wave scalar; humans stay at baseline. */
   damage: number;
-  state: "idle" | "toNode" | "gathering" | "toKeep" | "home" | "defend" | "toGarrison" | "garrisoned" | "toBarricade" | "buildingBarricade" | "moving" | "patrolling";
+  state:
+    | "idle"
+    | "toNode"
+    | "gathering"
+    | "toKeep"
+    | "home"
+    | "defend"
+    | "toGarrison"
+    | "garrisoned"
+    | "toBarricade"
+    | "buildingBarricade"
+    | "toRepair"
+    | "repairing"
+    | "moving"
+    | "patrolling";
   targetNodeId?: string;
   targetEnemyId?: number;
   targetBarricadeId?: number;
+  targetRepairBuildingId?: number;
+  targetRepairBarricadeId?: number;
+  targetRepairKeep?: boolean;
   moveTarget?: Vec2;
   patrolA?: Vec2;
   patrolB?: Vec2;
@@ -251,7 +278,7 @@ export interface CombatEvent {
 
 export interface CommandMarker {
   id: number;
-  kind: "move" | "gather" | "attack" | "patrol" | "rally";
+  kind: "move" | "gather" | "attack" | "patrol" | "rally" | "guard" | "repair";
   pos: Vec2;
   life: number;
 }
@@ -266,6 +293,8 @@ export interface WaveQueueItem {
   team: Team;
   kind: UnitKind;
   lane: Lane;
+  batchId?: number;
+  spawnPos?: Vec2;
 }
 
 export interface WaveSpec {
@@ -330,7 +359,7 @@ export interface GameState {
   buildSelection: BuildingKind | null;
   selectedBuildingId: number | null;
   selectedVillagerIds: number[];
-  /** Selected barracks troops / trebuchets (RTS). */
+  /** Selected friendly barracks units (AoE2 individual / group selection). */
   selectedUnitIds: number[];
   /** When set, DetailSheet shows peon training at the keep. */
   selectedKeepTeam: Team | null;
@@ -363,8 +392,6 @@ export interface GameState {
   possessAimUnitId: number | null;
   /** Barracks troops concentrate on this river belt when set. */
   defendLayer: Record<Team, DefendLayerId | null>;
-  /** Active hold / rearrange formation per team. */
-  formation: Record<Team, FormationId>;
   /** Local FFA gun-game practice or Final Duel yard; null outside those modes. */
   arena: ArenaMatchState | null;
   /** Skirmish Final Duel (propose → accept → courtyard 1v1). */
@@ -424,6 +451,17 @@ export interface TrainOptionUi {
   lockHint: string;
 }
 
+export interface SelectedArmyUi {
+  count: number;
+  leadId: number;
+  leadLabel: string;
+  groups: { kind: UnitKind; label: string; count: number }[];
+  orderSummary: string;
+  allHolding: boolean;
+  anyManual: boolean;
+  canPossess: boolean;
+}
+
 export interface UiSnapshot {
   phase: GamePhase;
   mapId: MapId;
@@ -444,6 +482,7 @@ export interface UiSnapshot {
   foeGold: number;
   foeWood: number;
   waveLabel: string;
+  waveTheme: string;
   wavePhase: WavePhase;
   buildTimer: number;
   canRush: boolean;
@@ -455,8 +494,7 @@ export interface UiSnapshot {
   selectedBuildingKind: BuildingKind | null;
   selectedKeepTeam: Team | null;
   selectedPeonCount: number;
-  /** Selected barracks troops / trebuchets. */
-  selectedUnitCount: number;
+  selectedArmy: SelectedArmyUi | null;
   selectedRanks: { damage: number; rate: number } | null;
   selectedCanUpgradeDamage: boolean;
   selectedCanUpgradeRate: boolean;
@@ -481,6 +519,10 @@ export interface UiSnapshot {
   foeArmyCost: number;
   /** Peons standing idle or walking home with no job. */
   idlePeonCount: number;
+  /** Friendly buildings, built barricades, and keep currently below max HP. */
+  damagedStructureCount: number;
+  /** Friendly peons currently walking to repair or actively repairing structures. */
+  repairingPeonCount: number;
   keepGarrisoned: number;
   keepGarrisonMax: number;
   canTrainPeon: boolean;
@@ -523,10 +565,6 @@ export interface UiSnapshot {
   defendLayer: DefendLayerId | null;
   /** Bridge belts available on this map (1–3). */
   defendLayers: { id: DefendLayerId; label: string }[];
-  /** Active army formation shape. */
-  formation: FormationId;
-  /** Formation shapes the Commands menu can pick. */
-  formations: { id: FormationId; label: string; hint: string }[];
   /** Local Arena gun-game practice. */
   arena: boolean;
   arenaRung: number;

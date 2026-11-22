@@ -19,7 +19,7 @@ import { homeCameraFrame } from "./homeCamera";
 import { mapBounds } from "./map";
 import { cloneModel, ensureModelsLoaded, setSharedAnisotropy } from "./assets3d";
 import { buildSkyEnvironment } from "./skyEnvironment";
-import type { Barricade, Building, GameState, Team, Unit } from "./types";
+import type { Barricade, Building, CommandMarker, GameState, RectHit, Team, Unit, UnitKind } from "./types";
 import {
   buildScenery,
   buildTerrain,
@@ -121,6 +121,27 @@ export function detectQualityTier(): QualityTier {
 }
 
 const MAX_COMMAND_LINES = 64;
+const MAX_GUARD_TETHERS = 96;
+
+/** Unified 3D screen-space pick result (extends RectHit with barricades). */
+export type ScreenPickHit = RectHit | { kind: "barricade"; id: string };
+
+/** Tactical ring base radius matched to each unit's 3D footprint. */
+function unitFootprintRadius(kind: UnitKind): number {
+  switch (kind) {
+    case "trebuchet":
+      return 16.5;
+    case "rammer":
+      return 13.5;
+    case "brute":
+    case "templar":
+      return 9.8;
+    case "ward":
+      return 9.2;
+    default:
+      return 7.4;
+  }
+}
 
 /**
  * Three.js battlefield renderer â€” same public API as the old Canvas2D GameRenderer.
@@ -137,6 +158,7 @@ export class GameRenderer {
   private staticRoot = new THREE.Group();
   private dynamicRoot = new THREE.Group();
   private commandLineRoot = new THREE.Group();
+  private tacticalRingRoot = new THREE.Group();
   private floatRoot = new THREE.Group();
 
   private entityMap = new Map<EntityKey, THREE.Object3D>();
@@ -155,12 +177,41 @@ export class GameRenderer {
   private scratchLive = new Set<string>();
   private scratchIds = new Set<number>();
   private scratchPads = new Set<string>();
+  private scratchSelectedUnitIds = new Set<number>();
+  private scratchGuardedIds = new Set<number>();
+  private scratchTargetKeys = new Set<string>();
+  private scratchUnitById = new Map<number, Unit>();
   // Pooled command-line visuals (updated in place, never re-created per frame)
   private commandLines: THREE.LineSegments;
   private commandLinePos: Float32Array;
   private commandLineCol: Float32Array;
   private rallyLine: THREE.Line;
   private rallyLinePos: Float32Array;
+  // Pooled AoE2 tactical visuals: barracks selection rings, emerald guard rings/tethers, crimson target rings
+  private guardTetherLines: THREE.LineSegments;
+  private guardLinePos: Float32Array;
+  private guardLineDist: Float32Array;
+  private unitRingGlowGeo: THREE.RingGeometry;
+  private unitRingCoreGeo: THREE.RingGeometry;
+  private unitSelGlowMat: THREE.MeshBasicMaterial;
+  private unitSelCoreMat: THREE.MeshBasicMaterial;
+  private guardRingGlowMat: THREE.MeshBasicMaterial;
+  private guardRingCoreMat: THREE.MeshBasicMaterial;
+  private targetRingGlowMat: THREE.MeshBasicMaterial;
+  private targetRingCoreMat: THREE.MeshBasicMaterial;
+  private damageYellowGlowMat: THREE.MeshBasicMaterial;
+  private damageYellowCoreMat: THREE.MeshBasicMaterial;
+  private damageRedGlowMat: THREE.MeshBasicMaterial;
+  private damageRedCoreMat: THREE.MeshBasicMaterial;
+  private unitSelRingPool: THREE.Group[] = [];
+  private guardRingPool: THREE.Group[] = [];
+  private targetRingPool: THREE.Group[] = [];
+  private damageYellowRingPool: THREE.Group[] = [];
+  private damageRedRingPool: THREE.Group[] = [];
+  // Shared command marker geometries (prevent per-marker geometry leaks)
+  private cmdRingGeo: THREE.RingGeometry;
+  private cmdGuardOuterGeo: THREE.RingGeometry;
+  private cmdGuardShieldGeo: THREE.RingGeometry;
   private padMaterials = new Map<string, THREE.MeshBasicMaterial>();
   private rangeRingFor = "";
   private dogRangeRing: THREE.Mesh | null = null;
@@ -179,6 +230,10 @@ export class GameRenderer {
   private pinchStartAngle = 0;
   private pinchCenter = { x: 0, y: 0 };
   private tmpV = new THREE.Vector3();
+  private pickV0 = new THREE.Vector3();
+  private pickV1 = new THREE.Vector3();
+  private pickRayPt = new THREE.Vector3();
+  private pickSegPt = new THREE.Vector3();
   private lastMapId = "";
   /** Gun-game courtyard — frame the yard, hide keeps. */
   private arenaView = false;
@@ -313,6 +368,7 @@ export class GameRenderer {
     this.staticRoot.add(this.worldGroup);
     this.root.add(this.dynamicRoot);
     this.dynamicRoot.add(this.commandLineRoot);
+    this.dynamicRoot.add(this.tacticalRingRoot);
     this.root.add(this.floatRoot);
 
     this.particleMat = new THREE.PointsMaterial({
@@ -350,6 +406,143 @@ export class GameRenderer {
     this.rallyLine.visible = false;
     this.commandLineRoot.add(this.rallyLine);
 
+    // Pooled emerald guard tether lines (dashed green, updated in place with pre-allocated lineDistance).
+    this.guardLinePos = new Float32Array(MAX_GUARD_TETHERS * 2 * 3);
+    this.guardLineDist = new Float32Array(MAX_GUARD_TETHERS * 2);
+    const guardLineGeo = new THREE.BufferGeometry();
+    guardLineGeo.setAttribute("position", new THREE.BufferAttribute(this.guardLinePos, 3).setUsage(THREE.DynamicDrawUsage));
+    guardLineGeo.setAttribute(
+      "lineDistance",
+      new THREE.BufferAttribute(this.guardLineDist, 1).setUsage(THREE.DynamicDrawUsage),
+    );
+    guardLineGeo.setDrawRange(0, 0);
+    this.guardTetherLines = new THREE.LineSegments(
+      guardLineGeo,
+      new THREE.LineDashedMaterial({
+        color: 0x3ef59c,
+        dashSize: 4.5,
+        gapSize: 3.5,
+        transparent: true,
+        opacity: 0.82,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    this.guardTetherLines.frustumCulled = false;
+    this.guardTetherLines.visible = false;
+    this.guardTetherLines.renderOrder = 22;
+    this.commandLineRoot.add(this.guardTetherLines);
+
+    // Shared normalized-radius ring geometries & materials for AoE2 unit selection / guard / focus-target rings.
+    this.unitRingGlowGeo = new THREE.RingGeometry(0.72, 1.15, 36);
+    this.unitRingGlowGeo.rotateX(-Math.PI / 2);
+    this.unitRingCoreGeo = new THREE.RingGeometry(0.84, 1.0, 36);
+    this.unitRingCoreGeo.rotateX(-Math.PI / 2);
+
+    this.unitSelGlowMat = new THREE.MeshBasicMaterial({
+      color: 0x26ecff,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.unitSelCoreMat = new THREE.MeshBasicMaterial({
+      color: 0xffe45e,
+      transparent: true,
+      opacity: 0.96,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+
+    this.guardRingGlowMat = new THREE.MeshBasicMaterial({
+      color: 0x12c970,
+      transparent: true,
+      opacity: 0.34,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.guardRingCoreMat = new THREE.MeshBasicMaterial({
+      color: 0x3ef59c,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+
+    this.targetRingGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xff1e2d,
+      transparent: true,
+      opacity: 0.36,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.targetRingCoreMat = new THREE.MeshBasicMaterial({
+      color: 0xff4550,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+
+    // Shared materials for always-visible structure damage rings (yellow: slightly damaged, red: critically damaged).
+    this.damageYellowGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xf4c842,
+      transparent: true,
+      opacity: 0.32,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.damageYellowCoreMat = new THREE.MeshBasicMaterial({
+      color: 0xf4c842,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.damageRedGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xe84848,
+      transparent: true,
+      opacity: 0.36,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.damageRedCoreMat = new THREE.MeshBasicMaterial({
+      color: 0xe84848,
+      transparent: true,
+      opacity: 0.94,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+
+    // Shared geometries for command markers (material disposed cleanly on prune).
+    this.cmdRingGeo = new THREE.RingGeometry(3.5, 5.0, 24);
+    this.cmdRingGeo.rotateX(-Math.PI / 2);
+    this.cmdGuardOuterGeo = new THREE.RingGeometry(3.8, 5.4, 32);
+    this.cmdGuardOuterGeo.rotateX(-Math.PI / 2);
+    this.cmdGuardShieldGeo = new THREE.RingGeometry(1.9, 3.1, 6);
+    this.cmdGuardShieldGeo.rotateX(-Math.PI / 2);
+
     this.buildSky();
     this.buildFpsRig();
     this.fitCamera();
@@ -357,6 +550,23 @@ export class GameRenderer {
     void ensureModelsLoaded().then(() => {
       // Force one remesh pass so trees and props pick up loaded models.
       this.lastMapId = "";
+    });
+  }
+
+  private hideTacticalOverlays() {
+    for (const r of this.unitSelRingPool) r.visible = false;
+    for (const r of this.guardRingPool) r.visible = false;
+    for (const r of this.targetRingPool) r.visible = false;
+    for (const r of this.damageYellowRingPool) r.visible = false;
+    for (const r of this.damageRedRingPool) r.visible = false;
+    this.guardTetherLines.geometry.setDrawRange(0, 0);
+    this.guardTetherLines.visible = false;
+  }
+
+  private disposeCommandMarkerObject(obj: THREE.Object3D) {
+    obj.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.material instanceof THREE.Material) mesh.material.dispose();
     });
   }
 
@@ -368,8 +578,10 @@ export class GameRenderer {
     this.particles.length = 0;
     this.rangeRingFor = "";
     this.disposeRangeRings();
+    this.hideTacticalOverlays();
     for (const [k, obj] of [...this.entityMap]) {
       this.dynamicRoot.remove(obj);
+      if (k.startsWith("cmd-")) this.disposeCommandMarkerObject(obj);
       this.clearAnimation(k);
       this.entityMap.delete(k);
     }
@@ -1315,6 +1527,319 @@ export class GameRenderer {
     };
   }
 
+  /** Project a 2D sim world point (at elevation `height`) into canvas-local CSS pixels, or null if behind camera. */
+  private projectWorldPoint(
+    worldX: number,
+    worldY: number,
+    height: number,
+    width: number,
+    heightPx: number,
+    out: { x: number; y: number },
+  ): boolean {
+    const v = this.tmpV;
+    v.set(worldX - WORLD_W / 2, height, worldY - WORLD_H / 2);
+    v.applyMatrix4(this.camera.matrixWorldInverse);
+    if (v.z >= -this.camera.near || v.z <= -this.camera.far) return false;
+    v.applyMatrix4(this.camera.projectionMatrix);
+    if (v.z < -1 || v.z > 1) return false;
+    out.x = (v.x * 0.5 + 0.5) * width;
+    out.y = (-v.y * 0.5 + 0.5) * heightPx;
+    return true;
+  }
+
+  /** Project a sim world coordinate to canvas-local screen coordinates, or null if behind the camera. */
+  worldToScreen(worldX: number, worldY: number, height = 0): { x: number; y: number } | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return null;
+    this.camera.updateMatrixWorld();
+    const out = { x: 0, y: 0 };
+    return this.projectWorldPoint(worldX, worldY, height, rect.width, rect.height, out) ? out : null;
+  }
+
+  /**
+   * Project every living friendly `fromBarracks` unit to canvas coordinates and return IDs
+   * falling inside the screen rectangle `[min(x0,x1), max(x0,x1)] × [min(y0,y1), max(y0,y1)]`.
+   */
+  pickFriendlyUnitsInScreenRect(
+    state: GameState,
+    team: Team,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+  ): number[] {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return [];
+    this.camera.updateMatrixWorld();
+    const minX = Math.min(x0, x1);
+    const maxX = Math.max(x0, x1);
+    const minY = Math.min(y0, y1);
+    const maxY = Math.max(y0, y1);
+    const pt = { x: 0, y: 0 };
+    const ids: number[] = [];
+
+    for (const u of state.units) {
+      if (u.team !== team || !u.fromBarracks || u.hp <= 0) continue;
+      const bodyH = u.kind === "trebuchet" || u.kind === "rammer" ? 7 : 4.5;
+      if (
+        this.projectWorldPoint(u.pos.x, u.pos.y, bodyH, rect.width, rect.height, pt) &&
+        pt.x >= minX &&
+        pt.x <= maxX &&
+        pt.y >= minY &&
+        pt.y <= maxY
+      ) {
+        ids.push(u.id);
+        continue;
+      }
+      if (
+        this.projectWorldPoint(u.pos.x, u.pos.y, 0.5, rect.width, rect.height, pt) &&
+        pt.x >= minX &&
+        pt.x <= maxX &&
+        pt.y >= minY &&
+        pt.y <= maxY
+      ) {
+        ids.push(u.id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Return IDs of all living friendly `fromBarracks` units of `kind` currently visible inside
+   * the camera viewport `[0..width, 0..height]` (AoE2 double-click selection).
+   */
+  pickVisibleFriendlyUnitsOfKind(state: GameState, team: Team, kind: UnitKind): number[] {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return [];
+    this.camera.updateMatrixWorld();
+    const pt = { x: 0, y: 0 };
+    const ids: number[] = [];
+
+    for (const u of state.units) {
+      if (u.team !== team || !u.fromBarracks || u.hp <= 0 || u.kind !== kind) continue;
+      const bodyH = u.kind === "trebuchet" || u.kind === "rammer" ? 7 : 4.5;
+      if (
+        (this.projectWorldPoint(u.pos.x, u.pos.y, bodyH, rect.width, rect.height, pt) ||
+          this.projectWorldPoint(u.pos.x, u.pos.y, 0.5, rect.width, rect.height, pt)) &&
+        pt.x >= 0 &&
+        pt.x <= rect.width &&
+        pt.y >= 0 &&
+        pt.y <= rect.height
+      ) {
+        ids.push(u.id);
+      }
+    }
+    return ids;
+  }
+
+  private segmentRayScore(
+    x0: number,
+    y0: number,
+    z0: number,
+    x1: number,
+    y1: number,
+    z1: number,
+    baseRadius: number,
+    minScreenScale: number,
+  ): number | null {
+    const ray = this.raycaster.ray;
+    this.pickV0.set(x0, y0, z0);
+    this.pickV1.set(x1, y1, z1);
+    const distSq = ray.distanceSqToSegment(this.pickV0, this.pickV1, this.pickRayPt, this.pickSegPt);
+    const camDist = this.pickRayPt.distanceTo(ray.origin);
+    if (camDist < this.camera.near) return null;
+    const effR = Math.max(baseRadius, camDist * minScreenScale);
+    if (distSq > effR * effR) return null;
+    return Math.sqrt(distSq) / effR + camDist * 1e-5;
+  }
+
+  private setupPickRay(screenX: number, screenY: number): boolean {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return false;
+    this.camera.updateMatrixWorld();
+    this.pointer.x = (screenX / rect.width) * 2 - 1;
+    this.pointer.y = -(screenY / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    return true;
+  }
+
+  /** Accurate 3D screen-space picking for living barricades (returns barricade id or null). */
+  pickBarricade(state: GameState, screenX: number, screenY: number): number | null {
+    if (!this.setupPickRay(screenX, screenY)) return null;
+    const hw = WORLD_W / 2;
+    const hh = WORLD_H / 2;
+    let bestId: number | null = null;
+    let bestScore = Infinity;
+    for (const bar of state.barricades) {
+      if (bar.hp <= 0) continue;
+      const wx = bar.pos.x - hw;
+      const wz = bar.pos.y - hh;
+      const score = this.segmentRayScore(wx - 19, 5.5, wz, wx + 19, 5.5, wz, 9.5, 0.015);
+      if (score != null && score < bestScore) {
+        bestScore = score;
+        bestId = bar.id;
+      }
+    }
+    return bestId;
+  }
+
+  private pickEntities(state: GameState, screenX: number, screenY: number, includeBarricades: false): RectHit | null;
+  private pickEntities(state: GameState, screenX: number, screenY: number, includeBarricades: true): ScreenPickHit | null;
+  private pickEntities(
+    state: GameState,
+    screenX: number,
+    screenY: number,
+    includeBarricades: boolean,
+  ): ScreenPickHit | null {
+    if (!this.setupPickRay(screenX, screenY)) return null;
+    const hw = WORLD_W / 2;
+    const hh = WORLD_H / 2;
+    const hasGround = this.raycaster.ray.intersectPlane(this.groundPlane, this.tmpV) !== null;
+    const gx = this.tmpV.x + hw;
+    const gy = this.tmpV.z + hh;
+
+    // 1. Living units & non-garrisoned villagers (3D capsule test so clicking upper bodies hits accurately).
+    let bestMobile: RectHit | null = null;
+    let bestMobileScore = Infinity;
+    for (const v of state.villagers) {
+      if (v.hp <= 0 || v.state === "garrisoned") continue;
+      const wx = v.pos.x - hw;
+      const wz = v.pos.y - hh;
+      const score = this.segmentRayScore(wx, 0, wz, wx, 10, wz, 7.8, 0.014);
+      if (score != null && score < bestMobileScore) {
+        bestMobileScore = score;
+        bestMobile = { kind: "villager", id: String(v.id) };
+      }
+    }
+    for (const u of state.units) {
+      if (u.hp <= 0) continue;
+      const wx = u.pos.x - hw;
+      const wz = u.pos.y - hh;
+      const topY = u.kind === "trebuchet" ? 18 : u.kind === "rammer" ? 10 : u.kind === "runner" || u.kind === "templar" ? 13.5 : 11;
+      const rad =
+        u.kind === "trebuchet"
+          ? 18
+          : u.kind === "rammer"
+            ? 14
+            : u.kind === "brute" || u.kind === "templar" || u.kind === "ward"
+              ? 10
+              : 8;
+      const score = this.segmentRayScore(wx, 0, wz, wx, topY, wz, rad, 0.014);
+      if (score != null && score < bestMobileScore) {
+        bestMobileScore = score;
+        bestMobile = { kind: "unit", id: String(u.id) };
+      }
+    }
+    if (bestMobile) return bestMobile;
+
+    // 2. Barricades (horizontal beam test across road).
+    if (includeBarricades) {
+      let bestBar: ScreenPickHit | null = null;
+      let bestBarScore = Infinity;
+      for (const bar of state.barricades) {
+        if (bar.hp <= 0) continue;
+        const wx = bar.pos.x - hw;
+        const wz = bar.pos.y - hh;
+        const score = this.segmentRayScore(wx - 19, 5.5, wz, wx + 19, 5.5, wz, 9.5, 0.015);
+        if (score != null && score < bestBarScore) {
+          bestBarScore = score;
+          bestBar = { kind: "barricade", id: String(bar.id) };
+        }
+      }
+      if (bestBar) return bestBar;
+    }
+
+    // 3. Buildings (friendly & enemy).
+    let bestBld: RectHit | null = null;
+    let bestBldScore = Infinity;
+    for (const b of state.buildings) {
+      if (b.hp <= 0) continue;
+      const wx = b.pos.x - hw;
+      const wz = b.pos.y - hh;
+      const topY = b.kind === "watchtower" || b.kind === "church" ? 28 : 20;
+      let score = this.segmentRayScore(wx, 0, wz, wx, topY, wz, 21, 0.016);
+      if (score == null && hasGround) {
+        const d = Math.hypot(gx - b.pos.x, gy - b.pos.y);
+        if (d < 26) score = d / 26 + 0.5;
+      }
+      if (score != null && score < bestBldScore) {
+        bestBldScore = score;
+        bestBld = { kind: "building", id: String(b.id) };
+      }
+    }
+    if (bestBld) return bestBld;
+
+    // 4. Resource nodes (wins over overlapping pads).
+    let bestNode: RectHit | null = null;
+    let bestNodeScore = Infinity;
+    for (const n of state.nodes) {
+      const wx = n.pos.x - hw;
+      const wz = n.pos.y - hh;
+      let score = this.segmentRayScore(wx, 0, wz, wx, 22, wz, 24, 0.016);
+      if (score == null && hasGround) {
+        const d = Math.hypot(gx - n.pos.x, gy - n.pos.y);
+        if (d < 34) score = d / 34 + 0.5;
+      }
+      if (score != null && score < bestNodeScore) {
+        bestNodeScore = score;
+        bestNode = { kind: "node", id: n.id };
+      }
+    }
+    if (bestNode) return bestNode;
+
+    // 5. Unoccupied build pads.
+    if (hasGround) {
+      const occupied = this.scratchPads;
+      occupied.clear();
+      for (const b of state.buildings) if (b.padId) occupied.add(b.padId);
+      let bestPad: RectHit | null = null;
+      let bestPadDist = 26;
+      for (const p of state.pads) {
+        if (occupied.has(p.id)) continue;
+        const d = Math.hypot(gx - p.pos.x, gy - p.pos.y);
+        if (d < bestPadDist) {
+          bestPadDist = d;
+          bestPad = { kind: "pad", id: p.id };
+        }
+      }
+      if (bestPad) return bestPad;
+    }
+
+    // 6. Keeps (skipped during Arena courtyard mode).
+    if (!state.arena) {
+      let bestKeep: RectHit | null = null;
+      let bestKeepScore = Infinity;
+      for (const team of ["you", "foe"] as Team[]) {
+        const k = state.keeps[team];
+        if (k.hp <= 0) continue;
+        const wx = k.pos.x - hw;
+        const wz = k.pos.y - hh;
+        let score = this.segmentRayScore(wx, 0, wz, wx, 34, wz, 34, 0.02);
+        if (score == null && hasGround) {
+          const d = Math.hypot(gx - k.pos.x, gy - k.pos.y);
+          if (d < 40) score = d / 40 + 0.5;
+        }
+        if (score != null && score < bestKeepScore) {
+          bestKeepScore = score;
+          bestKeep = { kind: "keep", id: team };
+        }
+      }
+      if (bestKeep) return bestKeep;
+    }
+
+    return null;
+  }
+
+  /** Accurate 3D screen-space entity picking for clicks/orders (returns `RectHit | null`). */
+  pickHit(state: GameState, screenX: number, screenY: number): RectHit | null {
+    return this.pickEntities(state, screenX, screenY, false);
+  }
+
+  /** Accurate 3D screen-space entity picking including barricades (`RectHit | { kind: "barricade"; id: string } | null`). */
+  pickTargetAt(state: GameState, screenX: number, screenY: number): ScreenPickHit | null {
+    return this.pickEntities(state, screenX, screenY, true);
+  }
+
   draw(state: GameState) {
     const now = performance.now();
     const rawMs = now - this.wallClock;
@@ -1348,7 +1873,9 @@ export class GameRenderer {
     this.syncPads(state);
     this.syncNodes(state);
     this.syncBarricades(state);
+    this.syncStructureDamageRings(state);
     this.syncUnits(state);
+    this.syncUnitTacticalViz(state);
     this.syncVillagers(state);
     this.syncCommandViz(state);
     this.updateAnimations(step);
@@ -1438,6 +1965,7 @@ export class GameRenderer {
       if (!k.startsWith(prefix)) continue;
       if (!live.has(k)) {
         this.dynamicRoot.remove(obj);
+        if (prefix === "cmd-") this.disposeCommandMarkerObject(obj);
         this.clearAnimation(k);
         this.entityMap.delete(k);
       }
@@ -1465,7 +1993,6 @@ export class GameRenderer {
 
   private syncKeeps(state: GameState) {
     const live = this.liveSet();
-    const showEnemyKeep = this.engagedEnemyIds(state).keep;
     for (const team of ["you", "foe"] as Team[]) {
       const key = `keep-${team}`;
       live.add(key);
@@ -1474,7 +2001,6 @@ export class GameRenderer {
       setPos3(obj, k.pos.x, k.pos.y, 0);
       if (k.hitFlash > 0) obj.scale.setScalar(1.04);
       else obj.scale.setScalar(1);
-      this.paintHpBar(obj, k.hp, k.maxHp, showEnemyKeep && team !== this.homeSide);
     }
     this.prune("keep-", live);
     this.prune("arena-", this.liveSet());
@@ -1507,7 +2033,6 @@ export class GameRenderer {
 
   private syncBuildings(state: GameState) {
     const live = this.liveSet();
-    const engagedBlds = this.engagedEnemyIds(state).buildings;
     for (const b of state.buildings) {
       const key = `bld-${b.id}`;
       live.add(key);
@@ -1594,7 +2119,6 @@ export class GameRenderer {
         const pulse = 1 + Math.sin(state.time * 7) * 0.1;
         mark.scale.setScalar(pulse);
       }
-      this.paintHpBar(obj, b.hp, b.maxHp, engagedBlds.has(b.id) && b.team !== this.homeSide);
       const arm = obj.userData.arm as THREE.Object3D | null;
       if (arm && b.animKick > 0) arm.rotation.z = -0.8 * (b.animKick / 0.15);
       else if (arm) arm.rotation.z = 0;
@@ -1877,183 +2401,8 @@ export class GameRenderer {
     obj.rotation.y = Math.PI - (obj.userData.faceYaw as number);
   }
 
-  /** Unit / building ids the local player is currently attacking (FPS or RTS). */
-  private engagedEnemyIds(state: GameState): { units: Set<number>; buildings: Set<number>; keep: boolean } {
-    const units = new Set<number>();
-    const buildings = new Set<number>();
-    let keep = false;
-    if (state.possessAimUnitId != null) units.add(state.possessAimUnitId);
-    if (state.possessAimBuildingId != null) buildings.add(state.possessAimBuildingId);
-    const selected = new Set(state.selectedUnitIds);
-    for (const u of state.units) {
-      if (u.team !== this.homeSide || u.hp <= 0) continue;
-      const mine = selected.has(u.id) || u.id === state.possessedId || u.playerOrdered;
-      if (!mine && u.targetUnitId == null) continue;
-      if (u.attackTargetId != null) units.add(u.attackTargetId);
-      if (u.targetUnitId != null && (mine || selected.has(u.id))) units.add(u.targetUnitId);
-      if (u.attackBuildingId != null) buildings.add(u.attackBuildingId);
-      if (u.attackKeep) keep = true;
-    }
-    for (const v of state.villagers) {
-      if (v.team !== this.homeSide || v.hp <= 0) continue;
-      if (v.targetEnemyId != null) units.add(v.targetEnemyId);
-    }
-    return { units, buildings, keep };
-  }
-
-  private ensureHpBar(obj: THREE.Object3D): THREE.Sprite {
-    let bar = obj.userData.hpBar as THREE.Sprite | undefined;
-    if (bar) return bar;
-    const canvas = document.createElement("canvas");
-    canvas.width = 128;
-    canvas.height = 16;
-    const tex = new THREE.CanvasTexture(canvas);
-    bar = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }),
-    );
-    bar.position.y = 14.5;
-    bar.scale.set(12, 1.4, 1);
-    bar.renderOrder = 7;
-    bar.center.set(0.5, 0.5);
-    obj.add(bar);
-    obj.userData.hpBar = bar;
-    obj.userData.hpBarCanvas = canvas;
-    obj.userData.hpBarPct = -1;
-    return bar;
-  }
-
-  private paintHpBar(obj: THREE.Object3D, hp: number, maxHp: number, show: boolean) {
-    const bar = this.ensureHpBar(obj);
-    bar.visible = show;
-    if (!show) return;
-    const pct = Math.max(0, Math.min(1, hp / Math.max(1, maxHp)));
-    if (Math.abs(pct - (obj.userData.hpBarPct as number)) < 0.02) return;
-    obj.userData.hpBarPct = pct;
-    const canvas = obj.userData.hpBarCanvas as HTMLCanvasElement;
-    const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, 128, 16);
-    ctx.fillStyle = "#1a1208";
-    ctx.fillRect(0, 0, 128, 16);
-    ctx.fillStyle = pct > 0.45 ? "#3ecf6a" : pct > 0.2 ? "#e0b03a" : "#e23b32";
-    ctx.fillRect(2, 2, Math.round(124 * pct), 12);
-    ctx.strokeStyle = "#fff6d8";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(1, 1, 126, 14);
-    (bar.material as THREE.SpriteMaterial).map!.needsUpdate = true;
-  }
-
-  private syncInspireFx(obj: THREE.Object3D, u: Unit, time: number) {
-    const inspired = (u.rallyBuffTimer ?? 0) > 0;
-    let mark = obj.userData.inspireMark as THREE.Sprite | undefined;
-    if (!inspired) {
-      if (mark) mark.visible = false;
-      if (obj.userData.inspireGlow) {
-        obj.traverse((o) => {
-          const m = o as THREE.Mesh;
-          if (!m.isMesh || !m.material) return;
-          const mats = Array.isArray(m.material) ? m.material : [m.material];
-          for (const mat of mats) {
-            if ("emissive" in mat && mat.userData?.inspireTint) {
-              (mat as THREE.MeshStandardMaterial).emissive.setHex(0);
-              (mat as THREE.MeshStandardMaterial).emissiveIntensity = 0;
-              delete mat.userData.inspireTint;
-            }
-          }
-        });
-        obj.userData.inspireGlow = false;
-      }
-      return;
-    }
-    if (!mark) {
-      const canvas = document.createElement("canvas");
-      canvas.width = 64;
-      canvas.height = 64;
-      const ctx = canvas.getContext("2d")!;
-      ctx.clearRect(0, 0, 64, 64);
-      ctx.fillStyle = u.team === "you" ? "#6ea8ff" : "#ff7a6e";
-      ctx.beginPath();
-      ctx.moveTo(32, 8);
-      ctx.lineTo(48, 28);
-      ctx.lineTo(38, 28);
-      ctx.lineTo(38, 52);
-      ctx.lineTo(26, 52);
-      ctx.lineTo(26, 28);
-      ctx.lineTo(16, 28);
-      ctx.closePath();
-      ctx.fill();
-      mark = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: new THREE.CanvasTexture(canvas),
-          transparent: true,
-          depthTest: false,
-        }),
-      );
-      mark.position.y = 18;
-      mark.scale.set(5, 5, 1);
-      mark.renderOrder = 8;
-      obj.add(mark);
-      obj.userData.inspireMark = mark;
-    }
-    mark.visible = true;
-    mark.position.y = 17.5 + Math.sin(time * 4 + u.id) * 0.6;
-    (mark.material as THREE.SpriteMaterial).opacity = 0.55 + 0.35 * Math.sin(time * 5 + u.id);
-    if (!obj.userData.inspireGlow) {
-      const tint = u.team === "you" ? 0x2f6dff : 0xe23b32;
-      obj.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!m.isMesh || !m.material) return;
-        const mats = Array.isArray(m.material) ? m.material : [m.material];
-        for (const mat of mats) {
-          if ("emissive" in mat) {
-            const std = mat as THREE.MeshStandardMaterial;
-            std.emissive.setHex(tint);
-            std.emissiveIntensity = 0.35;
-            std.userData = { ...std.userData, inspireTint: true };
-          }
-        }
-      });
-      obj.userData.inspireGlow = true;
-    } else {
-      obj.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!m.isMesh || !m.material) return;
-        const mats = Array.isArray(m.material) ? m.material : [m.material];
-        for (const mat of mats) {
-          if ("emissiveIntensity" in mat && mat.userData?.inspireTint) {
-            (mat as THREE.MeshStandardMaterial).emissiveIntensity =
-              0.22 + 0.2 * Math.sin(time * 5 + u.id);
-          }
-        }
-      });
-    }
-  }
-
-  private syncUnitSelectionRing(obj: THREE.Object3D, selected: boolean) {
-    let ring = obj.userData.selection as THREE.Mesh | null;
-    if (!ring) {
-      ring = new THREE.Mesh(
-        new THREE.RingGeometry(5.8, 7.1, 28),
-        new THREE.MeshBasicMaterial({
-          color: 0x79d3ff,
-          transparent: true,
-          opacity: 0.85,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        }),
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.3;
-      ring.renderOrder = 3;
-      obj.add(ring);
-      obj.userData.selection = ring;
-    }
-    ring.visible = selected;
-  }
-
   private syncUnits(state: GameState) {
     const live = this.liveSet();
-    const selected = new Set(state.selectedUnitIds);
-    const engaged = this.engagedEnemyIds(state);
     for (const u of state.units) {
       const key = `unit-${u.id}`;
       live.add(key);
@@ -2077,10 +2426,6 @@ export class GameRenderer {
       const possessed = state.possessedId === u.id;
       const driven = possessed || u.facing != null;
       this.syncPossessMark(obj, u, driven);
-      this.syncUnitSelectionRing(obj, selected.has(u.id) && !driven);
-      this.syncInspireFx(obj, u, state.time);
-      const showEnemyHp = engaged.units.has(u.id) && u.team !== this.homeSide;
-      this.paintHpBar(obj, u.hp, u.maxHp, showEnemyHp);
       // Local FPS body → camera yaw; other driven peers → synced facing; else travel.
       const lookYaw = possessed ? this.fpsYaw : u.facing;
       this.faceMesh(obj, u.pos.x, u.pos.y, lookYaw);
@@ -2110,7 +2455,7 @@ export class GameRenderer {
     this.prune("unit-", live);
   }
 
-  /** Team ring while this body is being driven. */
+  /** Team ring, screen name, and a thin HP bar while this body is being driven. */
   private syncPossessMark(obj: THREE.Object3D, u: Unit, on: boolean) {
     let plate = obj.userData.possessPlate as THREE.Group | undefined;
     if (!on) {
@@ -2135,13 +2480,35 @@ export class GameRenderer {
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.35;
       ring.renderOrder = 3;
-      plate.add(ring);
+      const name = new THREE.Sprite(
+        new THREE.SpriteMaterial({ transparent: true, depthTest: false }),
+      );
+      name.position.y = 16.2;
+      name.scale.set(16, 4.2, 1);
+      name.renderOrder = 6;
+      name.center.set(0.5, 0);
+      const bar = new THREE.Sprite(
+        new THREE.SpriteMaterial({ transparent: true, depthTest: false }),
+      );
+      bar.position.y = 15.2;
+      bar.scale.set(10, 0.7, 1);
+      bar.renderOrder = 6;
+      bar.center.set(0.5, 1);
+      plate.add(ring, name, bar);
       obj.add(plate);
       obj.userData.possessPlate = plate;
+      obj.userData.possessName = name;
+      obj.userData.possessBar = bar;
+      obj.userData.possessNameText = "";
     }
     plate.visible = true;
     const ring = plate.children[0] as THREE.Mesh;
     (ring.material as THREE.MeshBasicMaterial).color.set(color);
+    // HP / power live in the top FPS HUD; keep only the ground ring on the mesh.
+    const name = obj.userData.possessName as THREE.Sprite | undefined;
+    const bar = obj.userData.possessBar as THREE.Sprite | undefined;
+    if (name) name.visible = false;
+    if (bar) bar.visible = false;
   }
 
   private syncVillagers(state: GameState) {
@@ -2189,10 +2556,286 @@ export class GameRenderer {
         y: v.pos.y,
         timer: v.attackTimer,
         fighting: v.state === "defend" && v.attackTimer > -0.35,
-        work: v.state === "gathering" || v.state === "buildingBarricade",
+        work: v.state === "gathering" || v.state === "buildingBarricade" || v.state === "repairing",
       });
     }
     this.prune("vil-", live);
+  }
+
+  private obtainPooledRing(
+    pool: THREE.Group[],
+    glowMat: THREE.MeshBasicMaterial,
+    coreMat: THREE.MeshBasicMaterial,
+    glowOrder: number,
+    coreOrder: number,
+    idx: number,
+  ): THREE.Group {
+    if (idx < pool.length) return pool[idx]!;
+    const g = new THREE.Group();
+    const glow = new THREE.Mesh(this.unitRingGlowGeo, glowMat);
+    glow.renderOrder = glowOrder;
+    const core = new THREE.Mesh(this.unitRingCoreGeo, coreMat);
+    core.position.y = 0.04;
+    core.renderOrder = coreOrder;
+    g.add(glow, core);
+    this.tacticalRingRoot.add(g);
+    pool.push(g);
+    return g;
+  }
+
+  private finalizeRingPool(pool: THREE.Group[], usedCount: number) {
+    for (let i = usedCount; i < pool.length; i++) {
+      pool[i]!.visible = false;
+    }
+    const maxKeep = Math.max(24, usedCount * 2);
+    while (pool.length > maxKeep) {
+      const extra = pool.pop()!;
+      this.tacticalRingRoot.remove(extra);
+    }
+  }
+
+  /**
+   * Always-visible pooled damage rings around every living damaged structure on both teams:
+   * - Yellow ring (`0.45 <= hp / maxHp < 0.999`): slightly damaged
+   * - Gently pulsing red ring (`hp / maxHp < 0.45`): critically damaged
+   */
+  private syncStructureDamageRings(state: GameState) {
+    let yellowCount = 0;
+    let redCount = 0;
+
+    const critWave = Math.sin(state.time * 4.6);
+    const critPulse = 1 + critWave * 0.045;
+    this.damageRedCoreMat.opacity = 0.82 + critWave * 0.14;
+    this.damageRedGlowMat.opacity = 0.28 + critWave * 0.1;
+
+    const placeDamageRing = (x: number, y: number, elev: number, radius: number, hp: number, maxHp: number) => {
+      if (hp <= 0 || maxHp <= 0) return;
+      const ratio = hp / maxHp;
+      if (ratio >= 0.999) return;
+      if (ratio < 0.45) {
+        const ring = this.obtainPooledRing(
+          this.damageRedRingPool,
+          this.damageRedGlowMat,
+          this.damageRedCoreMat,
+          18,
+          19,
+          redCount++,
+        );
+        ring.visible = true;
+        setPos3(ring, x, y, elev);
+        ring.scale.setScalar(radius * critPulse);
+      } else {
+        const ring = this.obtainPooledRing(
+          this.damageYellowRingPool,
+          this.damageYellowGlowMat,
+          this.damageYellowCoreMat,
+          18,
+          19,
+          yellowCount++,
+        );
+        ring.visible = true;
+        setPos3(ring, x, y, elev);
+        ring.scale.setScalar(radius);
+      }
+    };
+
+    for (const b of state.buildings) {
+      if (b.hp <= 0 || b.hp >= b.maxHp) continue;
+      placeDamageRing(b.pos.x, b.pos.y, 0.68, 22, b.hp, b.maxHp);
+    }
+
+    for (const bar of state.barricades) {
+      if (!bar.built || bar.hp <= 0 || bar.hp >= bar.maxHp) continue;
+      placeDamageRing(bar.pos.x, bar.pos.y, 0.68, 17, bar.hp, bar.maxHp);
+    }
+
+    if (!state.arena) {
+      for (const team of ["you", "foe"] as Team[]) {
+        const keep = state.keeps[team];
+        if (!keep || keep.hp <= 0 || keep.hp >= keep.maxHp) continue;
+        placeDamageRing(keep.pos.x, keep.pos.y, 0.72, 35.5, keep.hp, keep.maxHp);
+      }
+    }
+
+    this.finalizeRingPool(this.damageYellowRingPool, yellowCount);
+    this.finalizeRingPool(this.damageRedRingPool, redCount);
+  }
+
+  /**
+   * AoE2-style tactical unit visuals (all pooled, zero per-frame geometry/material allocation):
+   * 1) Gold/cyan selection rings under units in `state.selectedUnitIds`
+   * 2) Pulsing emerald guard rings + dashed green tethers to guarded allies
+   * 3) Pulsing crimson target rings under focused enemy units, buildings, barricades, or keep
+   */
+  private syncUnitTacticalViz(state: GameState) {
+    const selectedIds = state.selectedUnitIds;
+    if (!selectedIds || selectedIds.length === 0) {
+      this.finalizeRingPool(this.unitSelRingPool, 0);
+      this.finalizeRingPool(this.guardRingPool, 0);
+      this.finalizeRingPool(this.targetRingPool, 0);
+      this.guardTetherLines.geometry.setDrawRange(0, 0);
+      this.guardTetherLines.visible = false;
+      return;
+    }
+
+    const selSet = this.scratchSelectedUnitIds;
+    selSet.clear();
+    for (const id of selectedIds) selSet.add(id);
+
+    const unitById = this.scratchUnitById;
+    unitById.clear();
+    for (const u of state.units) {
+      if (u.hp > 0) unitById.set(u.id, u);
+    }
+
+    const guardedIds = this.scratchGuardedIds;
+    guardedIds.clear();
+    const targetKeys = this.scratchTargetKeys;
+    targetKeys.clear();
+
+    const hw = WORLD_W / 2;
+    const hh = WORLD_H / 2;
+    const guardWave = Math.sin(state.time * 5.2);
+    const targetWave = Math.sin(state.time * 7.2);
+    const guardPulse = 1 + guardWave * 0.07;
+    const targetPulse = 1 + targetWave * 0.08;
+    this.guardRingCoreMat.opacity = 0.78 + guardWave * 0.16;
+    this.guardRingGlowMat.opacity = 0.24 + guardWave * 0.1;
+    this.targetRingCoreMat.opacity = 0.82 + targetWave * 0.14;
+    this.targetRingGlowMat.opacity = 0.26 + targetWave * 0.1;
+
+    let selCount = 0;
+    let guardCount = 0;
+    let targetCount = 0;
+    let tetherCount = 0;
+    const linePos = this.guardLinePos;
+    const lineDist = this.guardLineDist;
+
+    const placeTargetRing = (key: string, x: number, y: number, elev: number, radius: number) => {
+      if (targetKeys.has(key)) return;
+      targetKeys.add(key);
+      const tRing = this.obtainPooledRing(
+        this.targetRingPool,
+        this.targetRingGlowMat,
+        this.targetRingCoreMat,
+        25,
+        26,
+        targetCount++,
+      );
+      tRing.visible = true;
+      setPos3(tRing, x, y, elev);
+      tRing.scale.setScalar(radius * targetPulse);
+    };
+
+    for (const u of state.units) {
+      if (u.hp <= 0 || !selSet.has(u.id)) continue;
+
+      // 1. Selected barracks unit ring
+      const selRing = this.obtainPooledRing(
+        this.unitSelRingPool,
+        this.unitSelGlowMat,
+        this.unitSelCoreMat,
+        20,
+        21,
+        selCount++,
+      );
+      selRing.visible = true;
+      setPos3(selRing, u.pos.x, u.pos.y, 0.8);
+      selRing.scale.setScalar(unitFootprintRadius(u.kind));
+
+      // 2. Guard ring + dashed emerald tether
+      if (u.guardUnitId != null) {
+        const allyUnit = unitById.get(u.guardUnitId);
+        let guardPos: { x: number; y: number } | null = null;
+        let guardKeyId = -1;
+        let guardRadius = 7.4;
+
+        if (allyUnit && allyUnit.team === u.team && allyUnit.id !== u.id) {
+          guardPos = allyUnit.pos;
+          guardKeyId = allyUnit.id;
+          guardRadius = unitFootprintRadius(allyUnit.kind);
+        } else {
+          const allyVil = state.villagers.find(
+            (v) => v.id === u.guardUnitId && v.hp > 0 && v.state !== "garrisoned" && v.team === u.team,
+          );
+          if (allyVil) {
+            guardPos = allyVil.pos;
+            guardKeyId = -allyVil.id - 1;
+            guardRadius = 7.4;
+          }
+        }
+
+        if (guardPos) {
+          if (!guardedIds.has(guardKeyId)) {
+            guardedIds.add(guardKeyId);
+            const gRing = this.obtainPooledRing(
+              this.guardRingPool,
+              this.guardRingGlowMat,
+              this.guardRingCoreMat,
+              23,
+              24,
+              guardCount++,
+            );
+            gRing.visible = true;
+            setPos3(gRing, guardPos.x, guardPos.y, 0.75);
+            gRing.scale.setScalar(guardRadius * 1.22 * guardPulse);
+          }
+          if (tetherCount < MAX_GUARD_TETHERS) {
+            const segLen = Math.hypot(guardPos.x - u.pos.x, guardPos.y - u.pos.y);
+            if (segLen > 2) {
+              const o = tetherCount * 6;
+              linePos[o] = u.pos.x - hw;
+              linePos[o + 1] = 1.4;
+              linePos[o + 2] = u.pos.y - hh;
+              linePos[o + 3] = guardPos.x - hw;
+              linePos[o + 4] = 1.4;
+              linePos[o + 5] = guardPos.y - hh;
+              lineDist[tetherCount * 2] = 0;
+              lineDist[tetherCount * 2 + 1] = segLen;
+              tetherCount++;
+            }
+          }
+        }
+      }
+
+      // 3. Focus-attack crimson target rings
+      if (u.orderTargetUnitId != null) {
+        const enemy = unitById.get(u.orderTargetUnitId);
+        if (enemy) {
+          placeTargetRing(`u-${enemy.id}`, enemy.pos.x, enemy.pos.y, 0.82, unitFootprintRadius(enemy.kind) * 1.2);
+        }
+      }
+      if (u.orderTargetBuildingId != null) {
+        const bld = state.buildings.find((b) => b.id === u.orderTargetBuildingId && b.hp > 0);
+        if (bld) {
+          placeTargetRing(`b-${bld.id}`, bld.pos.x, bld.pos.y, 0.88, 21);
+        }
+      }
+      if (u.orderTargetBarricadeId != null) {
+        const bar = state.barricades.find((b) => b.id === u.orderTargetBarricadeId && b.hp > 0);
+        if (bar) {
+          placeTargetRing(`bar-${bar.id}`, bar.pos.x, bar.pos.y, 0.88, 17.5);
+        }
+      }
+      if (u.orderTargetKeep && !state.arena) {
+        const enemyTeam: Team = u.team === "you" ? "foe" : "you";
+        const keep = state.keeps[enemyTeam];
+        if (keep && keep.hp > 0) {
+          placeTargetRing(`k-${enemyTeam}`, keep.pos.x, keep.pos.y, 0.92, 34);
+        }
+      }
+    }
+
+    this.finalizeRingPool(this.unitSelRingPool, selCount);
+    this.finalizeRingPool(this.guardRingPool, guardCount);
+    this.finalizeRingPool(this.targetRingPool, targetCount);
+
+    this.guardTetherLines.geometry.setDrawRange(0, tetherCount * 2);
+    this.guardTetherLines.visible = tetherCount > 0;
+    if (tetherCount > 0) {
+      (this.guardTetherLines.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+      (this.guardTetherLines.geometry.getAttribute("lineDistance") as THREE.BufferAttribute).needsUpdate = true;
+    }
   }
 
   private syncCommandViz(state: GameState) {
@@ -2268,32 +2911,77 @@ export class GameRenderer {
       const key = `cmd-${marker.id}`;
       live.add(key);
       const obj = this.ensure(key, () => {
-        const colors = {
+        const colors: Record<CommandMarker["kind"], number> = {
           move: 0x72c9ff,
-          gather: 0x83db8a,
+          gather: 0xe6c866,
           attack: 0xff6e67,
           patrol: 0xe4bd67,
           rally: 0xffd475,
+          guard: 0x18e8b0,
+          repair: 0x7ee898,
         };
+        if (marker.kind === "guard") {
+          // Expanding emerald/teal outer ring + inner hexagonal shield pulse.
+          const g = new THREE.Group();
+          const outer = new THREE.Mesh(
+            this.cmdGuardOuterGeo,
+            new THREE.MeshBasicMaterial({
+              color: 0x18e8b0,
+              transparent: true,
+              opacity: 0.92,
+              side: THREE.DoubleSide,
+              depthTest: false,
+              depthWrite: false,
+              toneMapped: false,
+            }),
+          );
+          outer.renderOrder = 27;
+          const shield = new THREE.Mesh(
+            this.cmdGuardShieldGeo,
+            new THREE.MeshBasicMaterial({
+              color: 0x66ffe0,
+              transparent: true,
+              opacity: 0.95,
+              side: THREE.DoubleSide,
+              depthTest: false,
+              depthWrite: false,
+              toneMapped: false,
+            }),
+          );
+          shield.position.y = 0.05;
+          shield.renderOrder = 28;
+          g.add(outer, shield);
+          return g;
+        }
         const ring = new THREE.Mesh(
-          new THREE.RingGeometry(3.5, 5, 24),
+          this.cmdRingGeo,
           new THREE.MeshBasicMaterial({
             color: colors[marker.kind],
             transparent: true,
             opacity: 0.9,
             side: THREE.DoubleSide,
+            depthTest: false,
             depthWrite: false,
+            toneMapped: false,
           }),
         );
-        ring.rotation.x = -Math.PI / 2;
+        ring.renderOrder = 27;
         return ring;
       });
-      setPos3(obj, marker.pos.x, marker.pos.y, 0.35);
+      setPos3(obj, marker.pos.x, marker.pos.y, 0.85);
       const pulse = 1 + (1.4 - marker.life) * 1.8;
       obj.scale.setScalar(Math.max(0.5, pulse));
-      const mesh = obj as THREE.Mesh;
-      if (mesh.material instanceof THREE.MeshBasicMaterial) {
-        mesh.material.opacity = Math.max(0, marker.life / 1.4);
+      const opacity = Math.max(0, Math.min(1, marker.life / 1.4));
+      if (obj instanceof THREE.Mesh) {
+        if (obj.material instanceof THREE.MeshBasicMaterial) {
+          obj.material.opacity = opacity;
+        }
+      } else {
+        obj.rotation.y = (1.4 - marker.life) * 0.9;
+        for (const child of obj.children) {
+          const mat = (child as THREE.Mesh).material;
+          if (mat instanceof THREE.MeshBasicMaterial) mat.opacity = opacity;
+        }
       }
     }
     this.prune("cmd-", live);
@@ -2391,6 +3079,31 @@ export class GameRenderer {
   }
 
   dispose() {
+    this.disposeRangeRings();
+    for (const [k, obj] of this.entityMap) {
+      if (k.startsWith("cmd-")) this.disposeCommandMarkerObject(obj);
+    }
+    this.commandLines.geometry.dispose();
+    (this.commandLines.material as THREE.Material).dispose();
+    this.rallyLine.geometry.dispose();
+    (this.rallyLine.material as THREE.Material).dispose();
+    this.guardTetherLines.geometry.dispose();
+    (this.guardTetherLines.material as THREE.Material).dispose();
+    this.unitRingGlowGeo.dispose();
+    this.unitRingCoreGeo.dispose();
+    this.unitSelGlowMat.dispose();
+    this.unitSelCoreMat.dispose();
+    this.guardRingGlowMat.dispose();
+    this.guardRingCoreMat.dispose();
+    this.targetRingGlowMat.dispose();
+    this.targetRingCoreMat.dispose();
+    this.damageYellowGlowMat.dispose();
+    this.damageYellowCoreMat.dispose();
+    this.damageRedGlowMat.dispose();
+    this.damageRedCoreMat.dispose();
+    this.cmdRingGeo.dispose();
+    this.cmdGuardOuterGeo.dispose();
+    this.cmdGuardShieldGeo.dispose();
     this.skyEnv?.dispose();
     this.renderer.dispose();
   }

@@ -34,18 +34,16 @@ export const PEON_TRAIN_WOOD = 0;
 export const BASE_PEON_CAP = 2;
 export const HOUSE_POP = 3;
 export const MAX_PEON_QUEUE = 4;
-/** Fallback keep army pop (3-lane). Prefer `baseArmyCap(lanes)`. */
-export const BASE_ARMY_CAP = 25;
-/** Keep army slots by road count before mid houses / churches. */
-export function baseArmyCap(lanes: LaneCount) {
-  if (lanes <= 1) return 15;
-  if (lanes === 2) return 20;
-  return 25;
+/** Base keep army pop before midfield houses / churches (20 + 2 churches @ +15 = 50 max). */
+export const BASE_ARMY_CAP = 20;
+/** Keep army slots before midfield houses / churches. */
+export function baseArmyCap(_lanes: LaneCount) {
+  return BASE_ARMY_CAP;
 }
 /** Purple midfield house → military pop. */
 export const MID_HOUSE_ARMY_POP = 5;
-/** Church (upgraded barracks) → military pop. */
-export const CHURCH_ARMY_POP = 10;
+/** Church (consecrated midfield house) → military pop. */
+export const CHURCH_ARMY_POP = 15;
 /** Purple midfield house → church. */
 export const CHURCH_UPGRADE_GOLD = 500;
 /** Free levy interval from a consecrated church. */
@@ -183,7 +181,7 @@ export const ARCHER_VS_TREBUCHET = 0.28;
 export const MELEE_VS_TREBUCHET = 1.55;
 export const BARRICADE_HP = 36;
 
-/** Hit points so a trebuchet wrecks a structure in four shots. Houses stay off-limits; churches are legal. */
+/** Hit points so a trebuchet wrecks any structure in four shots. */
 export const BUILD_HP: Record<BuildingKind, number> = {
   watchtower: 40,
   ballista: 48,
@@ -205,14 +203,15 @@ export function trebuchetShot(maxHp: number) {
   return Math.max(1, Math.ceil(maxHp / TREBUCHET_SHOTS_TO_KILL));
 }
 
-/** Towers, halls, and churches. Houses (yard and purple) are off-limits. */
+/** All pad structures (towers, barracks, churches, and houses) are legal trebuchet targets. */
 export function isTrebuchetBuilding(kind: BuildingKind) {
   return (
     kind === "watchtower" ||
     kind === "ballista" ||
     kind === "catapult" ||
     kind === "barracks" ||
-    kind === "church"
+    kind === "church" ||
+    kind === "house"
   );
 }
 

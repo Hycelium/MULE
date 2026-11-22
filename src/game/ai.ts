@@ -6,6 +6,7 @@ import {
   scoutEnemy,
   type AdaptiveStance,
 } from "./doctrineAdapt";
+import { runDoctrineMicro } from "./doctrineMicro";
 import { getFoeBrain, type LearnFeatures } from "./learningAi";
 import { loadLocalOpponentProfile, type OpponentTendency } from "./opponentProfile";
 import { bestSelfPlayStyle, type AiStyle } from "./selfPlayBook";
@@ -185,6 +186,7 @@ function doctrineCommander(sim: GameSim, team: Team) {
       gold: state.gold[team],
       wood: state.wood[team],
       ecoFull,
+      ecoPads,
       hasForwardHouse: forward > 0,
       churches,
       ballistas: ballistas.length,
@@ -227,10 +229,17 @@ function doctrineCommander(sim: GameSim, team: Team) {
   else if (ballistas.length < tune.ballistaGoal) sim.placeAiBuilding("ballista", 0, team);
   else if (barracks < tune.barracksGoal) sim.placeAiBuilding("barracks", 0, team);
   else if (yard < ecoPads) sim.placeAiBuilding("house", 0, team, "eco");
-  else if (barsBusy && barracks < 3 && !savingForChurch && !savingForTrebGold) {
-    sim.placeAiBuilding("barracks", 0, team);
+  else if (forward > 0 && churches < tune.churchGoal && state.gold[team] >= 500 && sim.aiConsecrate(team)) {
+    // Immediately consecrate a forward midEco house into a Church once 500g is banked!
+  } else if (forward + churches < 1) {
+    // Place the first forward house right away so Church #1 can be consecrated cleanly.
+    sim.placeAiBuilding("house", 0, team, "midEco");
+  } else if (churches === 0 && savingForChurch) {
+    // Bank wood/gold cleanly until Church #1 is consecrated instead of draining gold on a 2nd barracks first.
   } else if (forward + churches < 2) {
     sim.placeAiBuilding("house", 0, team, "midEco");
+  } else if (barsBusy && barracks < 3 && churches >= 1 && !savingForChurch && !savingForTrebGold) {
+    sim.placeAiBuilding("barracks", 0, team);
   } else {
     // Unblocked post-eco priority: consecrate Church when affordable, AND build
     // counter-towers / extra barracks whenever we aren't actively reserving for Church.
@@ -238,7 +247,8 @@ function doctrineCommander(sim: GameSim, team: Team) {
     if (!consecrated && !savingForChurch && !savingForTrebGold) {
       if (ballistas.length < plan.wantBallistas) sim.placeAiBuilding("ballista", 0, team);
       else if (catapults.length < plan.wantCatapults) sim.placeAiBuilding("catapult", 0, team);
-      else if (barracks < 3 && freeGold >= 220 && freeWood >= 140) {
+      else if (churches >= 1 && barracks < plan.wantBarracks) sim.placeAiBuilding("barracks", 0, team);
+      else if (churches >= 1 && barracks < 3 && freeGold >= 220 && freeWood >= 140) {
         sim.placeAiBuilding("barracks", 0, team);
       }
     }
@@ -280,29 +290,40 @@ function doctrineCommander(sim: GameSim, team: Team) {
           ? Math.max(plan.earlyScreenGoal, 5)
           : plan.earlyScreenGoal;
       if (armyUsed < needEarly) sim.aiEnqueueTrain(pickAdaptiveScreenUnit(plan, tick), team);
-    } else if (savingForChurch && armyUsed >= Math.min(20, armyCap - 5) && intel.approachingHome < 5) {
-      // Hold trickle spending briefly near cap so we cleanly cross 500g for the Church.
+    } else if (
+      savingForChurch &&
+      (churches === 0
+        ? armyUsed >= (ecoPads <= 2 ? 9 : 6) || (intel.churches >= 1 && armyUsed >= 8)
+        : armyUsed >= (intel.churches > churches ? 10 : Math.min(16, armyCap - 4))) &&
+      intel.approachingHome < 4
+    ) {
+      // Sprint cleanly to 500g to consecrate Church #1 (fast!) or Church #2 (once army is strong).
     } else if (savingForTrebGold) {
       // Wood is ready for a Trebuchet — hold gold for 2-3s until 150g instead of draining it on levies.
     } else {
+      const screenCount = Math.max(0, armyUsed - trebs - rams);
+      const underHomeSiege =
+        plan.emergencyDefend ||
+        (plan.desiredLayer === "home" && intel.approachingHome >= 6 && screenCount < Math.max(8, intel.approachingHome));
+      const canQueueSiege = !underHomeSiege && screenCount >= 5;
       for (let b = 0; b < barracks; b++) {
         const w = state.wood[team];
         const g = state.gold[team];
         const slotsLeft = armyCap - sim.armySlotsUsed(team);
-        if (b === 0 && trebs < plan.wantTrebs && w >= 200 && g >= 150) {
+        if (b === 0 && canQueueSiege && trebs < plan.wantTrebs && w >= 200 && g >= 150) {
           sim.aiEnqueueTrain("trebuchet", team);
-        } else if (b === 0 && !plan.bankForTreb && rams < plan.wantRams && w >= 100 && g >= 75) {
+        } else if (b === 0 && canQueueSiege && !plan.bankForTreb && rams < plan.wantRams && w >= 100 && g >= 75) {
           sim.aiEnqueueTrain("rammer", team);
         } else if (b === 0 && spies < plan.wantSpies && g >= 165) {
           sim.aiEnqueueTrain("spy", team);
-        } else if ((needFirstSiege || plan.bankForTreb) && slotsLeft <= 2) {
+        } else if (canQueueSiege && (needFirstSiege || plan.bankForTreb) && slotsLeft <= 2) {
           // Reserve final cap slots for siege engines instead of filling them with screen.
-        } else if (plan.bankForTreb && w < 200) {
+        } else if (!underHomeSiege && plan.bankForTreb && w < 200) {
           // Spend gold on wood-free levies while banking 200 timber for the trebuchet.
           if (g >= 60 + (savingForDogs ? 90 : 0)) sim.aiEnqueueTrain("levy", team);
         } else {
           const pick = pickAdaptiveScreenUnit(plan, tick + b);
-          const train: TrainKind = needFirstSiege && pick === "archer" && w < 180 ? "levy" : pick;
+          const train: TrainKind = canQueueSiege && needFirstSiege && pick === "archer" && w < 180 ? "levy" : pick;
           sim.aiEnqueueTrain(train, team);
         }
       }
@@ -310,6 +331,7 @@ function doctrineCommander(sim: GameSim, team: Team) {
   }
 
   sim.setDefendLayer(plan.desiredLayer, team);
+  runDoctrineMicro(sim, team, plan);
 }
 
 const COMMANDERS: Record<AiStyle, (sim: GameSim, team: Team) => void> = {

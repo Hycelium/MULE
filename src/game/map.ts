@@ -1,4 +1,4 @@
-import { COPPER_REGEN, KEEP_MARGIN, PINE_REGEN, ROAD_X, WORLD_H, WORLD_W } from "./balance";
+import { CHURCH_AURA_RANGE, COPPER_REGEN, KEEP_MARGIN, PINE_REGEN, ROAD_X, WORLD_H, WORLD_W } from "./balance";
 import type { Lane, LaneCount, MapDef, MapId, Pad, ResourceNode, ResourceKind, Team, Vec2 } from "./types";
 
 /** River belts keyed by how far they sit from your keep. */
@@ -170,14 +170,22 @@ export type DefendStanceId = "keep" | RiverLayerId | "assault";
 
 export function defendLayerOptions(seed: number): { id: DefendStanceId; label: string }[] {
   const present = new Set(riverLayers(seed).map((b) => b.id));
+  const hasMidBridge = present.has("mid");
   const belts: { id: DefendStanceId; label: string }[] = [
-    { id: "home", label: "Home bridges" },
-    { id: "mid", label: present.size === 1 ? "Central bridge" : "Mid bridges" },
-    { id: "forward", label: "Forward bridges" },
+    ...(present.has("home") ? [{ id: "home" as const, label: "Home bridges" }] : []),
+    {
+      id: "mid",
+      label: hasMidBridge
+        ? present.size === 1
+          ? "Central bridge"
+          : "Mid bridges"
+        : "Hold midground",
+    },
+    ...(present.has("forward") ? [{ id: "forward" as const, label: "Forward bridges" }] : []),
   ];
   return [
     { id: "keep", label: "Defend keep" },
-    ...belts.filter((o) => present.has(o.id as RiverLayerId)),
+    ...belts,
     { id: "assault", label: "Attack" },
   ];
 }
@@ -194,7 +202,7 @@ export function absoluteRiverLayer(layerId: RiverLayerId, team: Team): RiverLaye
   return layerId;
 }
 
-/** Rally spot for a troop stance — own keep, nearest/far bridges, or enemy gate. */
+/** Rally spot for a troop stance — own keep, nearest/far bridges, midground, or enemy gate. */
 export function defendPointFor(
   seed: number,
   layerId: DefendStanceId,
@@ -216,6 +224,13 @@ export function defendPointFor(
   const belt = absoluteRiverLayer(layerId, team);
   const band = riverLayers(seed).find((b) => b.id === belt);
   if (band) return bridgeCrossing(seed, lane, band);
+  if (layerId === "mid") {
+    // Maps without a middle bridge substitute a dry midfield hold point along each lane's road.
+    const lanes = mapLanes(seed);
+    const safeLane = lanes.includes(lane) ? lane : (lanes[unitId % Math.max(1, lanes.length)] ?? 0);
+    const midY = WORLD_H / 2 + (team === "you" ? 14 : -14);
+    return { x: roadCenterX(seed, safeLane, midY), y: midY };
+  }
   const pts = bridgePoints(seed);
   return pts[unitId % Math.max(1, pts.length)] ?? { x: MAP_CX, y: WORLD_H / 2 };
 }
@@ -512,13 +527,9 @@ export function buildPads(map: MapDef): Pad[] {
     });
   }
 
-  // Four purple midfield eco pads — two nearer each base, mirrored and balanced.
-  const midSlots: { id: string; team: Team; x: number; y: number }[] = [
-    { id: "mid-w", team: "you", x: MAP_CX - 78, y: WORLD_H * 0.64 },
-    { id: "mid-e", team: "you", x: MAP_CX + 78, y: WORLD_H * 0.68 },
-    { id: "mid-w", team: "foe", x: MAP_CX - 78, y: WORLD_H * 0.36 },
-    { id: "mid-e", team: "foe", x: MAP_CX + 78, y: WORLD_H * 0.32 },
-  ];
+  // Four purple midfield eco / church pads — moved back to the home bridge approaches
+  // so consecrated churches blanket units defending the home bridges on both sides.
+  const midSlots = placeMidEcoPads(map, pads);
   for (const slot of midSlots) {
     pads.push({
       id: `${slot.team}-${slot.id}`,
@@ -529,6 +540,231 @@ export function buildPads(map: MapDef): Pad[] {
     });
   }
   return pads;
+}
+
+/**
+ * Place the mirrored west/east purple (`midEco`) pads slightly back by each team's
+ * home bridge approaches so church auras (`CHURCH_AURA_RANGE`) reach home-bridge fights
+ * while staying cleanly on dry land and clear of roads, combat pads, and resource nodes.
+ */
+function placeMidEcoPads(
+  map: MapDef,
+  existingPads: Pad[],
+): { id: string; team: Team; x: number; y: number }[] {
+  const seed = map.seed;
+  const n = map.lanes;
+  const lanes = mapLanes(seed);
+  const rivers = riverLayers(seed);
+  const { minX, maxX } = mapBounds(seed);
+  const homeBand = rivers.find((b) => b.id === "home");
+  const fwdBand = rivers.find((b) => b.id === "forward");
+  const youBridges = homeBand ? lanes.map((l) => bridgeCrossing(seed, l, homeBand)) : [];
+  const foeBridges = fwdBand ? lanes.map((l) => bridgeCrossing(seed, l, fwdBand)) : [];
+
+  const isClear = (
+    x: number,
+    y: number,
+    padDist: number,
+    nodeDist: number,
+    roadDist: number,
+    riverMargin: number,
+  ) => {
+    if (x < minX + 26 || x > maxX - 26) return false;
+    const foeY = WORLD_H - y;
+    for (const ty of [y, foeY]) {
+      for (const r of rivers) {
+        if (Math.abs(ty - riverYAt(r, x)) < r.width * 0.62 + riverMargin) return false;
+      }
+      for (const l of lanes) {
+        if (Math.abs(x - roadCenterX(seed, l, ty)) < roadDist) return false;
+      }
+      for (const p of existingPads) {
+        if (Math.hypot(x - p.pos.x, ty - p.pos.y) < padDist) return false;
+      }
+      for (const nd of map.nodes) {
+        if (Math.hypot(x - nd.x, ty - nd.yourY) < nodeDist) return false;
+        if (Math.hypot(x - nd.x, ty - (WORLD_H - nd.yourY)) < nodeDist) return false;
+      }
+    }
+    return true;
+  };
+
+  // Stay on the midfield bank right outside each team's home river so purple pads
+  // never crowd keep-yard combat towers while still projecting aura across the bridges.
+  const isFrontOfHomeRiver = (x: number, y: number) => {
+    if (!homeBand || !fwdBand) return true;
+    return y < riverYAt(homeBand, x) && y < WORLD_H - riverYAt(fwdBand, x);
+  };
+
+  const gatherCandidates = (side: -1 | 1): Vec2[] => {
+    const xLo = side < 0 ? minX + 26 : MAP_CX + 22;
+    const xHi = side < 0 ? MAP_CX - 22 : maxX - 26;
+    const yLo = n === 1 ? 840 : 830;
+    const yHi = 920;
+    const passes: [number, number, number, number][] = [
+      [36, 36, 28, 16],
+      [34, 34, 26, 15],
+      [30, 30, 24, 13],
+    ];
+    for (const [pd, nd, rd, rm] of passes) {
+      const cands: Vec2[] = [];
+      for (let y = yLo; y <= yHi; y += 4) {
+        for (let x = xLo; x <= xHi; x += 4) {
+          if (!isFrontOfHomeRiver(x, y)) continue;
+          if (!isClear(x, y, pd, nd, rd, rm)) continue;
+          cands.push({ x, y });
+        }
+      }
+      if (cands.length > 0) return cands;
+    }
+    return [];
+  };
+
+  const wCands = gatherCandidates(-1);
+  const eCands = gatherCandidates(1);
+
+  let bestW: Vec2 = { x: MAP_CX - 78, y: 876 };
+  let bestE: Vec2 = { x: MAP_CX + 78, y: 888 };
+
+  if (n === 1) {
+    const pick1 = (cands: Vec2[], side: -1 | 1, fallback: Vec2): Vec2 => {
+      const ty = side < 0 ? 872 : 890;
+      const roadAvgX = (roadCenterX(seed, 0, ty) + roadCenterX(seed, 0, WORLD_H - ty)) / 2;
+      const tx = roadAvgX + side * 66;
+      let best = fallback;
+      let bestScore = Infinity;
+      for (const c of cands) {
+        const s = Math.hypot(c.x - tx, c.y - ty);
+        if (s < bestScore) {
+          bestScore = s;
+          best = c;
+        }
+      }
+      return best;
+    };
+    bestW = pick1(wCands, -1, bestW);
+    bestE = pick1(eCands, 1, bestE);
+  } else if (n === 2) {
+    const pick2 = (cands: Vec2[], idx: number, fallback: Vec2): Vec2 => {
+      const yb = youBridges[idx]!;
+      const fb = foeBridges[idx]!;
+      let best = fallback;
+      let bestScore = Infinity;
+      for (const c of cands) {
+        const fy = WORLD_H - c.y;
+        const dY0 = Math.hypot(c.x - yb.x, c.y - yb.y);
+        const dY1 = Math.hypot(c.x - yb.x, c.y - (yb.y + 10));
+        const dF0 = Math.hypot(c.x - fb.x, fy - fb.y);
+        const dF1 = Math.hypot(c.x - fb.x, fy - (fb.y - 10));
+        const worst = Math.max(dY0, dY1, dF0, dF1);
+        const avg = (dY0 + dY1 + dF0 + dF1) * 0.25;
+        let miss = 0;
+        for (const d of [dY0, dY1, dF0, dF1]) {
+          if (d > CHURCH_AURA_RANGE) miss += 120 + (d - CHURCH_AURA_RANGE) * 10;
+        }
+        const centerPref = Math.abs(Math.abs(c.x - MAP_CX) - 78) * 0.06;
+        const score = miss + worst * 1.4 + avg * 0.4 + centerPref;
+        if (score < bestScore) {
+          bestScore = score;
+          best = c;
+        }
+      }
+      return best;
+    };
+    bestW = pick2(wCands, 0, bestW);
+    bestE = pick2(eCands, 1, bestE);
+  } else {
+    // 3 lanes: jointly pick west + east spots so the pair covers all three home bridges.
+    const shortlist3 = (cands: Vec2[], outerIdx: number): Vec2[] => {
+      const yo = youBridges[outerIdx]!;
+      const ym = youBridges[1]!;
+      const fo = foeBridges[outerIdx]!;
+      const fm = foeBridges[1]!;
+      const byBoth = cands
+        .map((c) => {
+          const fy = WORLD_H - c.y;
+          const dO = Math.max(Math.hypot(c.x - yo.x, c.y - yo.y), Math.hypot(c.x - fo.x, fy - fo.y));
+          const dM = Math.max(Math.hypot(c.x - ym.x, c.y - ym.y), Math.hypot(c.x - fm.x, fy - fm.y));
+          return { c, s: Math.max(dO, dM) + (dO + dM) * 0.15 };
+        })
+        .sort((a, b) => a.s - b.s)
+        .slice(0, 25);
+      const byOuter = cands
+        .map((c) => {
+          const fy = WORLD_H - c.y;
+          const dO = Math.max(Math.hypot(c.x - yo.x, c.y - yo.y), Math.hypot(c.x - fo.x, fy - fo.y));
+          const dM = Math.max(Math.hypot(c.x - ym.x, c.y - ym.y), Math.hypot(c.x - fm.x, fy - fm.y));
+          return { c, s: dO * 1.4 + dM * 0.25 };
+        })
+        .sort((a, b) => a.s - b.s)
+        .slice(0, 20);
+      const seen = new Set<string>();
+      const out: Vec2[] = [];
+      for (const item of [...byBoth, ...byOuter]) {
+        const k = `${item.c.x},${item.c.y}`;
+        if (!seen.has(k)) {
+          seen.add(k);
+          out.push(item.c);
+        }
+      }
+      return out;
+    };
+
+    const topW = shortlist3(wCands, 0);
+    const topE = shortlist3(eCands, 2);
+    if (topW.length > 0) bestW = topW[0]!;
+    if (topE.length > 0) bestE = topE[0]!;
+
+    let bestPairScore = Infinity;
+    for (const w of topW) {
+      for (const e of topE) {
+        if (Math.hypot(w.x - e.x, w.y - e.y) < 36) continue;
+        let worstCenter = 0;
+        let worstAnchor = 0;
+        let missPenalty = 0;
+        let sum = 0;
+        for (let i = 0; i < 3; i++) {
+          const yb = youBridges[i]!;
+          const dcY = Math.min(Math.hypot(w.x - yb.x, w.y - yb.y), Math.hypot(e.x - yb.x, e.y - yb.y));
+          const daY = Math.min(
+            Math.hypot(w.x - yb.x, w.y - (yb.y + 10)),
+            Math.hypot(e.x - yb.x, e.y - (yb.y + 10)),
+          );
+          const fb = foeBridges[i]!;
+          const dcF = Math.min(
+            Math.hypot(w.x - fb.x, WORLD_H - w.y - fb.y),
+            Math.hypot(e.x - fb.x, WORLD_H - e.y - fb.y),
+          );
+          const daF = Math.min(
+            Math.hypot(w.x - fb.x, WORLD_H - w.y - (fb.y - 10)),
+            Math.hypot(e.x - fb.x, WORLD_H - e.y - (fb.y - 10)),
+          );
+          worstCenter = Math.max(worstCenter, dcY, dcF);
+          worstAnchor = Math.max(worstAnchor, daY, daF);
+          sum += dcY + dcF + daY + daF;
+          for (const d of [dcY, dcF]) {
+            if (d > CHURCH_AURA_RANGE) missPenalty += 180 + (d - CHURCH_AURA_RANGE) * 10;
+          }
+          for (const d of [daY, daF]) {
+            if (d > CHURCH_AURA_RANGE) missPenalty += 60 + (d - CHURCH_AURA_RANGE) * 5;
+          }
+        }
+        const score = missPenalty + worstCenter * 1.4 + worstAnchor * 0.8 + sum * 0.08 + Math.abs(w.y - e.y) * 0.1;
+        if (score < bestPairScore) {
+          bestPairScore = score;
+          bestW = w;
+          bestE = e;
+        }
+      }
+    }
+  }
+
+  return [
+    { id: "mid-w", team: "you", x: bestW.x, y: bestW.y },
+    { id: "mid-e", team: "you", x: bestE.x, y: bestE.y },
+    { id: "mid-w", team: "foe", x: bestW.x, y: WORLD_H - bestW.y },
+    { id: "mid-e", team: "foe", x: bestE.x, y: WORLD_H - bestE.y },
+  ];
 }
 
 export function buildNodes(map: MapDef): ResourceNode[] {

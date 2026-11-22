@@ -14,6 +14,10 @@ interface HudProps {
 }
 
 export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound, onRush }: HudProps) {
+  const isEndless = !Number.isFinite(ui.totalWaves) || ui.totalWaves <= 0;
+  const cleanedWave = (ui.waveLabel || "").trim().replace(/\/(?:0|Infinity|NaN)\b/gi, "").trim();
+  const waveDisplay = cleanedWave || (isEndless ? "1" : `1/${ui.totalWaves}`);
+  const waveTheme = (ui.waveTheme || "").trim();
   const xpPct = ui.keepXpPct;
   const phaseLabel =
     ui.wavePhase === "build"
@@ -129,9 +133,13 @@ export function Hud({ ui, compact, quality, onQuality, onPause, onSpeed, onSound
             {ui.peonCount}/{ui.peonCap}
           </span>
         </div>
-        <div className="stat">
+        <div
+          className="stat wave-stat"
+          title={waveTheme ? `Wave ${waveDisplay} · ${waveTheme} · ${phaseLabel}` : undefined}
+        >
           <span className="label">WAVE</span>
-          <span className="value">{ui.waveLabel}</span>
+          <span className="value">{waveDisplay}</span>
+          {waveTheme && <span className="wave-theme">{waveTheme}</span>}
           <span className="phase-tag">{phaseLabel}</span>
         </div>
         <div className="stat">

@@ -2,7 +2,6 @@ import { skirmishMap } from "../game/map";
 import type {
   BuildingKind,
   DefendLayerId,
-  FormationId,
   GamePhase,
   Lane,
   MapDef,
@@ -26,6 +25,8 @@ export type RemoteOrder =
   | { t: "gather"; team: Team; ids: number[]; nodeId: string }
   | { t: "recall"; team: Team }
   | { t: "work"; team: Team }
+  | { t: "repair"; team: Team }
+  | { t: "repairTarget"; team: Team; ids: number[]; buildingId?: number; barricadeId?: number; keep?: boolean }
   | { t: "build"; team: Team; kind: BuildingKind; padId: string }
   | { t: "train"; team: Team; kind: TrainKind; buildingId: number }
   | { t: "peon"; team: Team }
@@ -46,11 +47,16 @@ export type RemoteOrder =
   | { t: "possess"; team: Team; id: number }
   | { t: "unpossess"; team: Team }
   | { t: "defend"; team: Team; layer: DefendLayerId | null }
-  | { t: "formation"; team: Team; id: FormationId }
   | { t: "unitMove"; team: Team; ids: number[]; x: number; y: number }
-  | { t: "unitAttack"; team: Team; ids: number[]; targetId: number }
+  | { t: "unitAttackUnit"; team: Team; ids: number[]; targetId: number }
   | { t: "unitAttackBuilding"; team: Team; ids: number[]; buildingId: number }
+  | { t: "unitAttackBarricade"; team: Team; ids: number[]; barricadeId: number }
   | { t: "unitAttackKeep"; team: Team; ids: number[] }
+  | { t: "unitGuard"; team: Team; ids: number[]; guardId: number }
+  | { t: "unitPatrol"; team: Team; ids: number[]; x: number; y: number }
+  | { t: "unitHold"; team: Team; ids: number[]; hold: boolean }
+  | { t: "unitStop"; team: Team; ids: number[] }
+  | { t: "unitRelease"; team: Team; ids: number[] }
   | { t: "duelPropose"; team: Team }
   | { t: "duelAccept"; team: Team }
   | { t: "duelDecline"; team: Team };
@@ -82,6 +88,12 @@ export interface SnapUnit {
   rallyBuffTimer?: number;
   /** Driven look yaw (radians). Present while a player is in the body. */
   facing?: number;
+  guardUnitId?: number;
+  orderTargetUnitId?: number;
+  orderTargetBuildingId?: number;
+  orderTargetKeep?: boolean;
+  holdPosition?: boolean;
+  manualOrder?: boolean;
 }
 
 export interface SnapVillager {
@@ -95,6 +107,9 @@ export interface SnapVillager {
   nodeId?: string;
   enemyId?: number;
   barricadeId?: number;
+  repairBuildingId?: number;
+  repairBarricadeId?: number;
+  repairKeep?: boolean;
   mx?: number;
   my?: number;
   ax?: number;
@@ -244,6 +259,8 @@ const ORDER_TYPES = new Set<RemoteOrder["t"]>([
   "gather",
   "recall",
   "work",
+  "repair",
+  "repairTarget",
   "build",
   "train",
   "peon",
@@ -264,11 +281,16 @@ const ORDER_TYPES = new Set<RemoteOrder["t"]>([
   "possess",
   "unpossess",
   "defend",
-  "formation",
   "unitMove",
-  "unitAttack",
+  "unitAttackUnit",
   "unitAttackBuilding",
+  "unitAttackBarricade",
   "unitAttackKeep",
+  "unitGuard",
+  "unitPatrol",
+  "unitHold",
+  "unitStop",
+  "unitRelease",
   "duelPropose",
   "duelAccept",
   "duelDecline",

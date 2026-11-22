@@ -204,6 +204,37 @@ function stepCheeseBot(sim, kind, st) {
     if (sim.aiEnqueueTrain(rot[st.ti % rot.length], team)) st.ti++;
   }
   sim.setDefendLayer(army >= 18 ? "assault" : "home", team);
+  stepOpponentMicro(sim, team);
+}
+
+/** Gives ghosts & siege cheese bots AoE2-style treb guarding & tower focus-fire so Doc trains vs real micro. */
+function stepOpponentMicro(sim, team) {
+  const s = sim.getState();
+  const enemy = team === "you" ? "foe" : "you";
+  const mine = s.units.filter((u) => u.team === team && u.fromBarracks && u.hp > 0);
+  const trebs = mine.filter((u) => u.kind === "trebuchet");
+  if (trebs.length === 0) return;
+  const freeEscorts = mine.filter(
+    (u) => (u.kind === "ward" || u.kind === "levy" || u.kind === "archer" || u.kind === "runner") && u.guardUnitId == null,
+  );
+  for (const treb of trebs) {
+    const curGuards = mine.filter((u) => u.guardUnitId === treb.id).length;
+    const need = 3 - curGuards;
+    if (need > 0 && freeEscorts.length > 0) {
+      const pick = freeEscorts.splice(0, need).map((u) => u.id);
+      sim.aiUnitGuard(team, pick, treb.id);
+    }
+    if (treb.orderTargetBuildingId == null && treb.orderTargetUnitId == null) {
+      const targetB = s.buildings.find(
+        (b) =>
+          b.team === enemy &&
+          (b.kind === "ballista" || b.kind === "catapult" || b.kind === "watchtower") &&
+          b.hp > 0 &&
+          Math.hypot(b.pos.x - treb.pos.x, b.pos.y - treb.pos.y) <= 195,
+      );
+      if (targetB) sim.aiUnitAttackBuilding(team, [treb.id], targetB.id);
+    }
+  }
 }
 
 function stepHumanGhost(sim, log, st) {
@@ -231,6 +262,7 @@ function stepHumanGhost(sim, log, st) {
   }
   if (t >= (log.humanPeaks?.firstCrossSec ?? 120)) sim.setDefendLayer("assault", "you");
   else sim.setDefendLayer("home", "you");
+  stepOpponentMicro(sim, "you");
 }
 
 function runCheeseMatch(map, cheeseKind, tune) {

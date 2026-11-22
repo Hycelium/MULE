@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { BASE_ARMY_CAP, CHURCH_ARMY_POP, HOUSE_POP, MID_HOUSE_ARMY_POP } from "../game/balance";
 import { isEnemyStructure } from "../game/ownership";
 import { buildingName } from "../game/sim";
-import type { BuildingKind, TrainKind, UiSnapshot } from "../game/types";
+import type { BuildingKind, TrainKind, UiSnapshot, UnitKind } from "../game/types";
 
-interface DetailSheetProps {
+export interface DetailSheetProps {
   ui: UiSnapshot;
   onUpgradeDamage: () => void;
   onUpgradeRate: () => void;
@@ -16,6 +17,13 @@ interface DetailSheetProps {
   onCallHome: () => void;
   onGarrison: () => void;
   onUngarrison: () => void;
+  armyPatrolMode: boolean;
+  onPossessSelected: () => void;
+  onToggleArmyHold: () => void;
+  onStartArmyPatrol: () => void;
+  onStopArmy: () => void;
+  onReleaseArmy: () => void;
+  onFilterArmyKind: (kind: UnitKind) => void;
 }
 
 const STRUCTURE_ROLE: Partial<Record<BuildingKind, string>> = {
@@ -23,8 +31,7 @@ const STRUCTURE_ROLE: Partial<Record<BuildingKind, string>> = {
   ballista: "Armor-piercing bolts at a fixed rate. Upgrade posts guard dogs that kill spies on the pad.",
   catapult: "Splash that stays strong at the gate and breaks barricades.",
   barricade: "A peon blocks one road. Melee has to chop it. A ram smashes it.",
-  church:
-    "Upgraded purple house. Blessing aura (+25% damage, regen), +10 army pop. Free levy every 10s, templar knight every 60s.",
+  church: `Upgraded purple house. Blessing aura (+25% damage, regen), +${CHURCH_ARMY_POP} army pop. Free levy every 10s, templar knight every 60s.`,
 };
 
 function costLabel(gold: number, wood: number) {
@@ -47,16 +54,31 @@ export function DetailSheet({
   onCallHome,
   onGarrison,
   onUngarrison,
+  armyPatrolMode,
+  onPossessSelected,
+  onToggleArmyHold,
+  onStartArmyPatrol,
+  onStopArmy,
+  onReleaseArmy,
+  onFilterArmyKind,
 }: DetailSheetProps) {
   const keepPanel = ui.selectedKeepTeam === ui.localTeam;
-  const subject = keepPanel ? "keep" : ui.selectedBuildingId ? `b${ui.selectedBuildingId}` : "";
+  const buildingPanel = Boolean(ui.selectedBuildingId && ui.selectedBuildingKind);
+  const armyPanel = !keepPanel && !buildingPanel && Boolean(ui.selectedArmy && ui.selectedArmy.count > 0);
+  const subject = keepPanel
+    ? "keep"
+    : buildingPanel
+      ? `b${ui.selectedBuildingId}`
+      : armyPanel
+        ? "army"
+        : "";
   const [collapsed, setCollapsed] = useState(false);
   const [razeConfirm, setRazeConfirm] = useState(false);
   useEffect(() => {
     setCollapsed(false);
     setRazeConfirm(false);
   }, [subject]);
-  if (!keepPanel && (!ui.selectedBuildingId || !ui.selectedBuildingKind)) return null;
+  if (!keepPanel && !buildingPanel && !armyPanel) return null;
 
   const sheetClass = collapsed ? "detail sheet-float collapsed" : "detail sheet-float";
   const headControls = (
@@ -76,6 +98,104 @@ export function DetailSheet({
       </button>
     </div>
   );
+
+  if (armyPanel) {
+    const army = ui.selectedArmy!;
+    const title = army.count === 1 ? army.leadLabel : `Selected Army (${army.count})`;
+    const orderStatus = army.orderSummary?.trim() || "Auto";
+    return (
+      <div className={`${sheetClass} army-sheet`} role="region" aria-label="Selected army">
+        <div className="detail-head">
+          <div className="army-head-copy">
+            <div className="army-title-row">
+              <div className="detail-title">{title}</div>
+              <span className={`army-status-badge${army.anyManual ? " manual" : ""}`}>{orderStatus}</span>
+            </div>
+          </div>
+          {headControls}
+        </div>
+        {!collapsed && (
+          <div className="detail-body">
+            {army.groups.length > 0 && (
+              <div className="army-groups" role="group" aria-label="Selected unit types">
+                {army.groups.map((g) => (
+                  <button
+                    key={g.kind}
+                    type="button"
+                    className={`army-chip${army.groups.length === 1 ? " solo" : ""}`}
+                    onClick={() => onFilterArmyKind(g.kind)}
+                    title={
+                      army.groups.length === 1
+                        ? `${g.label} (${g.count} selected)`
+                        : `Click to select only ${g.label}`
+                    }
+                  >
+                    <span>{g.label}</span>
+                    <em>×{g.count}</em>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="army-cmd-bar" role="toolbar" aria-label="Army commands">
+              <button
+                type="button"
+                className={`army-cmd primary${army.canPossess ? " afford" : ""}`}
+                disabled={!army.canPossess}
+                onClick={onPossessSelected}
+                title="Take first-person command of the lead soldier (V)"
+              >
+                <span>Take Field</span>
+                <kbd>V</kbd>
+              </button>
+              <button
+                type="button"
+                className={`army-cmd${army.allHolding ? " active" : ""}`}
+                aria-pressed={army.allHolding}
+                onClick={onToggleArmyHold}
+                title="Hold position and engage nearby foes without chasing (H)"
+              >
+                <span>Hold</span>
+                <kbd>H</kbd>
+              </button>
+              <button
+                type="button"
+                className={`army-cmd${armyPatrolMode ? " active" : ""}`}
+                aria-pressed={armyPatrolMode}
+                onClick={onStartArmyPatrol}
+                title="Patrol between current spot and destination (P)"
+              >
+                <span>Patrol</span>
+                <kbd>P</kbd>
+              </button>
+              <button
+                type="button"
+                className="army-cmd"
+                onClick={onStopArmy}
+                title="Halt movement and clear active attack/guard targets (X)"
+              >
+                <span>Stop</span>
+                <kbd>X</kbd>
+              </button>
+              <button
+                type="button"
+                className={`army-cmd${army.anyManual ? " afford" : ""}`}
+                disabled={!army.anyManual}
+                onClick={onReleaseArmy}
+                title="Release manual orders and return squad to global lane/defend stance"
+              >
+                <span>Auto</span>
+              </button>
+            </div>
+
+            <p className="army-tip">
+              Right-click ground to form up · ally to guard &amp; follow · foe/tower to focus-fire · Dbl-click picks same type
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (keepPanel) {
     const canPay =
@@ -173,8 +293,8 @@ export function DetailSheet({
       <div className="detail-body">
       {isHouse && (
         <p className="detail-note">
-          Yard houses add +3 peon pop. Purple midfield houses add +5 army pop and can consecrate into a church for 500g.
-          Keep army slots scale with roads (15 / 20 / 25).
+          Yard houses add +{HOUSE_POP} peon pop. Purple midfield houses add +{MID_HOUSE_ARMY_POP} army pop and can consecrate into a church (+{CHURCH_ARMY_POP} army pop) for 500g.
+          Keep grants {BASE_ARMY_CAP} base army slots (up to {BASE_ARMY_CAP + 2 * CHURCH_ARMY_POP} max with 2 churches).
         </p>
       )}
       {isHouse && !isEnemy && ui.selectedIsMidHouse && (

@@ -1,126 +1,122 @@
 {
   "schema": "roadkeep-human-logs-v1",
-  "syncedAt": "2026-11-21T13:02:38.185Z",
+  "exportedAt": "2026-11-22T01:50:44.429Z",
+  "note": "Modern post-micro / endless-wave matches only (stale pre-overhaul matches pruned)",
   "matches": [
     {
       "version": 1,
-      "id": "match-2026-11-21T04-40-04-951Z",
-      "playedAt": "2026-11-21T04:40:04.951Z",
+      "id": "match-2026-11-22T01-34-27-571Z",
+      "playedAt": "2026-11-22T01:34:27.571Z",
       "map": {
-        "name": "Frost Notch",
-        "seed": 3585012853,
-        "lanes": 2,
-        "keepLevel": 7,
+        "name": "Copper Dell",
+        "seed": 1636882598,
+        "lanes": 3,
+        "keepLevel": 32,
         "scoutSalt": 1
       },
       "aiStyle": "doctrine",
       "doctrineTune": {
-        "attackAt": 20,
-        "trebGoal": 5,
-        "ramGoal": 2,
+        "attackAt": 17,
+        "trebGoal": 2,
+        "ramGoal": 4,
         "spyGoal": 1,
         "escortGap": 34,
         "standoff": 175,
         "padGuards": 0,
         "barracksGoal": 1,
         "ballistaGoal": 1,
-        "wardPct": 35,
+        "wardPct": 40,
         "archerPct": 25,
         "earlyScreen": 2,
         "ecoFirst": 1,
         "barricades": 1,
-        "churchGoal": 2
+        "churchGoal": 2,
+        "midStageAt": 11,
+        "fortressPush": 27,
+        "retreatKeepHp": 0.42,
+        "greedDrop": 9,
+        "churchSaveAt": 280,
+        "siegeTrebCap": 3
       },
       "outcome": {
         "humanWon": true,
-        "durationSec": 544,
+        "durationSec": 311,
         "endReason": "Victory. Their keep is broken.",
-        "waves": 10,
-        "humanKeepHp": 217,
-        "docKeepHp": -3,
-        "humanSlain": 191,
-        "humanGoldEarned": 7950
+        "waves": 6,
+        "humanKeepHp": 232,
+        "docKeepHp": -8,
+        "humanSlain": 114,
+        "humanGoldEarned": 5875
       },
       "humanBuildOrder": [
+        {
+          "t": 1,
+          "kind": "house",
+          "zone": "eco"
+        },
         {
           "t": 3,
           "kind": "house",
           "zone": "eco"
         },
         {
-          "t": 22,
+          "t": 28,
           "kind": "house",
           "zone": "eco"
         },
         {
-          "t": 62,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 151,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 153,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 154,
-          "kind": "church",
-          "zone": "midEco"
-        },
-        {
-          "t": 158,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 159,
-          "kind": "church",
-          "zone": "midEco"
-        },
-        {
-          "t": 166,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 172,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 186,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 246,
+          "t": 43,
           "kind": "house",
           "zone": "eco"
+        },
+        {
+          "t": 88,
+          "kind": "house",
+          "zone": "midEco"
+        },
+        {
+          "t": 89,
+          "kind": "church",
+          "zone": "midEco"
+        },
+        {
+          "t": 99,
+          "kind": "house",
+          "zone": "midEco"
+        },
+        {
+          "t": 112,
+          "kind": "church",
+          "zone": "midEco"
+        },
+        {
+          "t": 119,
+          "kind": "barracks",
+          "zone": "combat"
+        },
+        {
+          "t": 279,
+          "kind": "barracks",
+          "zone": "combat"
         }
       ],
       "humanTrained": {
-        "peon": 17,
-        "archer": 1,
-        "rammer": 8,
-        "spy": 1,
-        "ward": 14,
-        "levy": 17
+        "peon": 15,
+        "archer": 19,
+        "trebuchet": 2,
+        "ward": 10,
+        "runner": 6
       },
       "humanUpgrades": {
-        "towerDamage": 8,
-        "towerRate": 2,
+        "towerDamage": 0,
+        "towerRate": 0,
         "barracksDamage": 4,
-        "barracksRate": 0
+        "barracksRate": 2
       },
       "humanPeaks": {
-        "maxArmy": 40,
-        "maxPeons": 11,
-        "firstCrossSec": 98
+        "maxArmy": 45,
+        "maxPeons": 14,
+        "firstCrossSec": 203
       },
       "timeline": [
         {
@@ -129,272 +125,602 @@
           "foeHp": 280,
           "youArmy": 0,
           "foeArmy": 0,
-          "youPeons": 8,
+          "youPeons": 9,
           "foePeons": 8,
           "youTowers": 1,
           "foeTowers": 1,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "home"
+          "foeLayer": "home",
+          "foeStance": "standard"
         },
         {
           "t": 60,
-          "youHp": 273,
-          "foeHp": 280,
+          "youHp": 232,
+          "foeHp": 268,
           "youArmy": 0,
           "foeArmy": 0,
-          "youPeons": 8,
-          "foePeons": 11,
+          "youPeons": 13,
+          "foePeons": 14,
           "youTowers": 1,
           "foeTowers": 2,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "home"
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
         },
         {
           "t": 90,
-          "youHp": 273,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 2,
-          "youPeons": 8,
-          "foePeons": 11,
+          "youHp": 232,
+          "foeHp": 268,
+          "youArmy": 0,
+          "foeArmy": 1,
+          "youPeons": 14,
+          "foePeons": 14,
           "youTowers": 1,
           "foeTowers": 2,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "home"
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
         },
         {
           "t": 120,
-          "youHp": 273,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 7,
-          "youPeons": 8,
-          "foePeons": 11,
+          "youHp": 232,
+          "foeHp": 268,
+          "youArmy": 3,
+          "foeArmy": 8,
+          "youPeons": 14,
+          "foePeons": 14,
           "youTowers": 1,
           "foeTowers": 2,
           "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "home"
+          "foeRams": 3,
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
         },
         {
           "t": 150,
-          "youHp": 273,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 10,
-          "youPeons": 8,
-          "foePeons": 11,
+          "youHp": 232,
+          "foeHp": 268,
+          "youArmy": 23,
+          "foeArmy": 14,
+          "youPeons": 14,
+          "foePeons": 14,
           "youTowers": 1,
-          "foeTowers": 2,
+          "foeTowers": 3,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "home"
+          "foeRams": 4,
+          "foeLayer": "mid",
+          "foeStance": "anti-swarm"
         },
         {
           "t": 180,
-          "youHp": 273,
-          "foeHp": 280,
-          "youArmy": 4,
+          "youHp": 232,
+          "foeHp": 268,
+          "youArmy": 36,
           "foeArmy": 17,
-          "youPeons": 8,
-          "foePeons": 11,
-          "youTowers": 3,
-          "foeTowers": 2,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 4,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "home"
+          "foeRams": 4,
+          "foeLayer": "assault",
+          "foeStance": "anti-swarm"
         },
         {
           "t": 210,
-          "youHp": 273,
-          "foeHp": 280,
-          "youArmy": 13,
-          "foeArmy": 25,
-          "youPeons": 8,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
+          "youHp": 232,
+          "foeHp": 268,
+          "youArmy": 32,
+          "foeArmy": 11,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 4,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "assault"
+          "foeRams": 3,
+          "foeLayer": "assault",
+          "foeStance": "anti-swarm"
         },
         {
           "t": 240,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 18,
-          "foeArmy": 12,
-          "youPeons": 3,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
+          "youHp": 232,
+          "foeHp": 268,
+          "youArmy": 45,
+          "foeArmy": 10,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 4,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "home"
+          "foeRams": 4,
+          "foeLayer": "home",
+          "foeStance": "anti-siege"
         },
         {
           "t": 270,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 24,
-          "foeArmy": 21,
-          "youPeons": 7,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
+          "youHp": 232,
+          "foeHp": 268,
+          "youArmy": 39,
+          "foeArmy": 10,
+          "youPeons": 14,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 4,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "assault"
+          "foeRams": 0,
+          "foeLayer": "assault",
+          "foeStance": "anti-siege"
         },
         {
           "t": 300,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 27,
-          "foeArmy": 8,
-          "youPeons": 8,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
+          "youHp": 232,
+          "foeHp": 268,
+          "youArmy": 35,
+          "foeArmy": 0,
+          "youPeons": 14,
+          "foePeons": 12,
+          "youTowers": 1,
+          "foeTowers": 4,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "home"
-        },
-        {
-          "t": 330,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 38,
-          "foeArmy": 9,
-          "youPeons": 8,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "home"
-        },
-        {
-          "t": 360,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 40,
-          "foeArmy": 17,
-          "youPeons": 8,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "home"
-        },
-        {
-          "t": 390,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 40,
-          "foeArmy": 19,
-          "youPeons": 8,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "assault"
-        },
-        {
-          "t": 420,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 24,
-          "foeArmy": 9,
-          "youPeons": 8,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "home"
-        },
-        {
-          "t": 450,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 21,
-          "foeArmy": 14,
-          "youPeons": 8,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "home"
-        },
-        {
-          "t": 480,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 24,
-          "foeArmy": 21,
-          "youPeons": 11,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "assault"
-        },
-        {
-          "t": 510,
-          "youHp": 217,
-          "foeHp": 280,
-          "youArmy": 40,
-          "foeArmy": 11,
-          "youPeons": 4,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "home"
-        },
-        {
-          "t": 540,
-          "youHp": 217,
-          "foeHp": 136,
-          "youArmy": 28,
-          "foeArmy": 4,
-          "youPeons": 4,
-          "foePeons": 11,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "home"
+          "foeLayer": "home",
+          "foeStance": "anti-siege"
         }
       ]
     },
     {
       "version": 1,
-      "id": "match-2026-11-21T04-30-03-853Z",
-      "playedAt": "2026-11-21T04:30:03.853Z",
+      "id": "match-2026-11-22T01-27-37-643Z",
+      "playedAt": "2026-11-22T01:27:37.643Z",
       "map": {
-        "name": "Hollow Crossing",
-        "seed": 2716362,
+        "name": "Cinder Hollow",
+        "seed": 621435971,
+        "lanes": 3,
+        "keepLevel": 31,
+        "scoutSalt": 31
+      },
+      "aiStyle": "doctrine",
+      "doctrineTune": {
+        "attackAt": 17,
+        "trebGoal": 2,
+        "ramGoal": 4,
+        "spyGoal": 1,
+        "escortGap": 34,
+        "standoff": 175,
+        "padGuards": 0,
+        "barracksGoal": 1,
+        "ballistaGoal": 1,
+        "wardPct": 40,
+        "archerPct": 25,
+        "earlyScreen": 2,
+        "ecoFirst": 1,
+        "barricades": 1,
+        "churchGoal": 2,
+        "midStageAt": 11,
+        "fortressPush": 27,
+        "retreatKeepHp": 0.42,
+        "greedDrop": 9,
+        "churchSaveAt": 280,
+        "siegeTrebCap": 3
+      },
+      "outcome": {
+        "humanWon": true,
+        "durationSec": 624,
+        "endReason": "Victory. Their keep is broken.",
+        "waves": 10,
+        "humanKeepHp": 256,
+        "docKeepHp": -6,
+        "humanSlain": 334,
+        "humanGoldEarned": 13319
+      },
+      "humanBuildOrder": [
+        {
+          "t": 2,
+          "kind": "house",
+          "zone": "eco"
+        },
+        {
+          "t": 6,
+          "kind": "house",
+          "zone": "eco"
+        },
+        {
+          "t": 36,
+          "kind": "house",
+          "zone": "eco"
+        },
+        {
+          "t": 59,
+          "kind": "house",
+          "zone": "eco"
+        },
+        {
+          "t": 66,
+          "kind": "house",
+          "zone": "midEco"
+        },
+        {
+          "t": 69,
+          "kind": "church",
+          "zone": "midEco"
+        },
+        {
+          "t": 83,
+          "kind": "house",
+          "zone": "midEco"
+        },
+        {
+          "t": 93,
+          "kind": "church",
+          "zone": "midEco"
+        },
+        {
+          "t": 101,
+          "kind": "barracks",
+          "zone": "combat"
+        },
+        {
+          "t": 187,
+          "kind": "ballista",
+          "zone": "combat"
+        },
+        {
+          "t": 189,
+          "kind": "ballista",
+          "zone": "combat"
+        },
+        {
+          "t": 198,
+          "kind": "catapult",
+          "zone": "combat"
+        },
+        {
+          "t": 451,
+          "kind": "barracks",
+          "zone": "combat"
+        }
+      ],
+      "humanTrained": {
+        "peon": 16,
+        "archer": 16,
+        "ward": 32,
+        "trebuchet": 10
+      },
+      "humanUpgrades": {
+        "towerDamage": 6,
+        "towerRate": 2,
+        "barracksDamage": 4,
+        "barracksRate": 4
+      },
+      "humanPeaks": {
+        "maxArmy": 45,
+        "maxPeons": 14,
+        "firstCrossSec": 179
+      },
+      "timeline": [
+        {
+          "t": 30,
+          "youHp": 280,
+          "foeHp": 280,
+          "youArmy": 0,
+          "foeArmy": 0,
+          "youPeons": 6,
+          "foePeons": 8,
+          "youTowers": 1,
+          "foeTowers": 1,
+          "foeTrebs": 0,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "standard"
+        },
+        {
+          "t": 60,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 0,
+          "foeArmy": 0,
+          "youPeons": 10,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
+        },
+        {
+          "t": 90,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 2,
+          "foeArmy": 3,
+          "youPeons": 14,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 1,
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
+        },
+        {
+          "t": 120,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 17,
+          "foeArmy": 11,
+          "youPeons": 13,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 4,
+          "foeLayer": "mid",
+          "foeStance": "standard"
+        },
+        {
+          "t": 150,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 31,
+          "foeArmy": 20,
+          "youPeons": 13,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 3,
+          "foeTrebs": 0,
+          "foeRams": 4,
+          "foeLayer": "assault",
+          "foeStance": "anti-swarm"
+        },
+        {
+          "t": 180,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 26,
+          "foeArmy": 10,
+          "youPeons": 7,
+          "foePeons": 14,
+          "youTowers": 1,
+          "foeTowers": 4,
+          "foeTrebs": 0,
+          "foeRams": 1,
+          "foeLayer": "home",
+          "foeStance": "anti-swarm"
+        },
+        {
+          "t": 210,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 33,
+          "foeArmy": 13,
+          "youPeons": 7,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 0,
+          "foeRams": 1,
+          "foeLayer": "assault",
+          "foeStance": "anti-ballista"
+        },
+        {
+          "t": 240,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 40,
+          "foeArmy": 11,
+          "youPeons": 7,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 1,
+          "foeLayer": "mid",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 270,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 37,
+          "foeArmy": 13,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 0,
+          "foeLayer": "assault",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 300,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 43,
+          "foeArmy": 11,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 2,
+          "foeLayer": "mid",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 330,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 41,
+          "foeArmy": 17,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 0,
+          "foeLayer": "assault",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 360,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 35,
+          "foeArmy": 10,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 1,
+          "foeLayer": "home",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 390,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 37,
+          "foeArmy": 13,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 420,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 22,
+          "foeArmy": 11,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 450,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 22,
+          "foeArmy": 19,
+          "youPeons": 11,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 0,
+          "foeLayer": "assault",
+          "foeStance": "anti-ballista"
+        },
+        {
+          "t": 480,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 40,
+          "foeArmy": 18,
+          "youPeons": 7,
+          "foePeons": 14,
+          "youTowers": 4,
+          "foeTowers": 4,
+          "foeTrebs": 2,
+          "foeRams": 3,
+          "foeLayer": "assault",
+          "foeStance": "anti-ballista"
+        },
+        {
+          "t": 510,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 33,
+          "foeArmy": 9,
+          "youPeons": 7,
+          "foePeons": 14,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 0,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "regroup"
+        },
+        {
+          "t": 540,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 45,
+          "foeArmy": 21,
+          "youPeons": 7,
+          "foePeons": 14,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 4,
+          "foeRams": 0,
+          "foeLayer": "assault",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 570,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 42,
+          "foeArmy": 17,
+          "youPeons": 7,
+          "foePeons": 14,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 2,
+          "foeRams": 3,
+          "foeLayer": "assault",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 600,
+          "youHp": 256,
+          "foeHp": 280,
+          "youArmy": 39,
+          "foeArmy": 7,
+          "youPeons": 7,
+          "foePeons": 14,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 0,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "regroup"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "match-2026-11-21T19-39-03-199Z",
+      "playedAt": "2026-11-21T19:39:03.199Z",
+      "map": {
+        "name": "Crimson Wold",
+        "seed": 719638656,
         "lanes": 1,
-        "keepLevel": 5,
-        "scoutSalt": 0
+        "keepLevel": 6,
+        "scoutSalt": 5
       },
       "aiStyle": "doctrine",
       "doctrineTune": {
         "attackAt": 20,
-        "trebGoal": 5,
-        "ramGoal": 2,
-        "spyGoal": 1,
-        "escortGap": 34,
+        "trebGoal": 2,
+        "ramGoal": 6,
+        "spyGoal": 2,
+        "escortGap": 38,
         "standoff": 175,
         "padGuards": 0,
         "barracksGoal": 1,
@@ -404,89 +730,93 @@
         "earlyScreen": 2,
         "ecoFirst": 1,
         "barricades": 1,
-        "churchGoal": 2
+        "churchGoal": 2,
+        "midStageAt": 12,
+        "fortressPush": 28,
+        "retreatKeepHp": 0.45,
+        "greedDrop": 5,
+        "churchSaveAt": 220,
+        "siegeTrebCap": 3
       },
       "outcome": {
         "humanWon": true,
-        "durationSec": 634,
+        "durationSec": 371,
         "endReason": "Victory. Their keep is broken.",
-        "waves": 12,
-        "humanKeepHp": 276,
+        "waves": 8,
+        "humanKeepHp": 265,
         "docKeepHp": -4,
-        "humanSlain": 113,
-        "humanGoldEarned": 5921
+        "humanSlain": 74,
+        "humanGoldEarned": 4555
       },
       "humanBuildOrder": [
-        {
-          "t": 18,
-          "kind": "house",
-          "zone": "eco"
-        },
         {
           "t": 45,
           "kind": "house",
           "zone": "eco"
         },
         {
-          "t": 65,
+          "t": 82,
           "kind": "barracks",
           "zone": "combat"
         },
         {
-          "t": 195,
+          "t": 93,
           "kind": "ballista",
           "zone": "combat"
         },
         {
-          "t": 253,
+          "t": 117,
           "kind": "house",
-          "zone": "midEco"
+          "zone": "eco"
         },
         {
-          "t": 257,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 289,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 372,
+          "t": 136,
           "kind": "catapult",
           "zone": "combat"
         },
         {
-          "t": 488,
+          "t": 162,
+          "kind": "house",
+          "zone": "midEco"
+        },
+        {
+          "t": 165,
+          "kind": "house",
+          "zone": "midEco"
+        },
+        {
+          "t": 206,
           "kind": "church",
           "zone": "midEco"
         },
         {
-          "t": 563,
+          "t": 279,
           "kind": "church",
           "zone": "midEco"
+        },
+        {
+          "t": 326,
+          "kind": "ballista",
+          "zone": "combat"
         }
       ],
       "humanTrained": {
-        "peon": 10,
-        "archer": 8,
-        "rammer": 8,
-        "ward": 11,
-        "runner": 3,
-        "levy": 4,
-        "trebuchet": 2
+        "peon": 6,
+        "levy": 12,
+        "archer": 7,
+        "ward": 1,
+        "rammer": 2
       },
       "humanUpgrades": {
-        "towerDamage": 8,
-        "towerRate": 4,
+        "towerDamage": 6,
+        "towerRate": 6,
         "barracksDamage": 2,
-        "barracksRate": 0
+        "barracksRate": 2
       },
       "humanPeaks": {
-        "maxArmy": 33,
+        "maxArmy": 35,
         "maxPeons": 8,
-        "firstCrossSec": 100
+        "firstCrossSec": 331
       },
       "timeline": [
         {
@@ -495,509 +825,200 @@
           "foeHp": 280,
           "youArmy": 0,
           "foeArmy": 0,
-          "youPeons": 5,
+          "youPeons": 2,
           "foePeons": 2,
           "youTowers": 1,
           "foeTowers": 1,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "standard"
         },
         {
           "t": 60,
-          "youHp": 280,
+          "youHp": 276,
           "foeHp": 280,
           "youArmy": 0,
           "foeArmy": 0,
-          "youPeons": 8,
+          "youPeons": 5,
           "foePeons": 5,
           "youTowers": 1,
           "foeTowers": 1,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "standard"
         },
         {
           "t": 90,
-          "youHp": 280,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 1,
+          "youArmy": 0,
           "foeArmy": 0,
-          "youPeons": 8,
+          "youPeons": 5,
           "foePeons": 8,
           "youTowers": 1,
           "foeTowers": 2,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "standard"
         },
         {
           "t": 120,
-          "youHp": 280,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 1,
+          "youArmy": 0,
           "foeArmy": 0,
           "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 1,
+          "youTowers": 2,
           "foeTowers": 2,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "standard"
         },
         {
           "t": 150,
-          "youHp": 280,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 1,
+          "youArmy": 0,
+          "foeArmy": 0,
           "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
+          "youTowers": 3,
+          "foeTowers": 3,
           "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "keep"
+          "foeRams": 0,
+          "foeLayer": "keep",
+          "foeStance": "anti-fortress"
         },
         {
           "t": 180,
-          "youHp": 276,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 3,
+          "youArmy": 0,
+          "foeArmy": 6,
           "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
+          "youTowers": 3,
+          "foeTowers": 3,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
+          "foeRams": 1,
+          "foeLayer": "keep",
+          "foeStance": "anti-fortress"
         },
         {
           "t": 210,
-          "youHp": 276,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 8,
-          "foeArmy": 9,
+          "youArmy": 4,
+          "foeArmy": 15,
           "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
+          "youTowers": 3,
+          "foeTowers": 3,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
+          "foeRams": 1,
+          "foeLayer": "mid",
+          "foeStance": "anti-fortress"
         },
         {
           "t": 240,
-          "youHp": 276,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 13,
-          "foeArmy": 13,
+          "youArmy": 8,
+          "foeArmy": 19,
           "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
+          "youTowers": 3,
+          "foeTowers": 3,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
+          "foeRams": 1,
+          "foeLayer": "mid",
+          "foeStance": "anti-fortress"
         },
         {
           "t": 270,
-          "youHp": 276,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 16,
-          "foeArmy": 16,
-          "youPeons": 8,
+          "youArmy": 25,
+          "foeArmy": 11,
+          "youPeons": 7,
           "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
+          "youTowers": 3,
+          "foeTowers": 3,
+          "foeTrebs": 1,
+          "foeRams": 0,
+          "foeLayer": "keep",
+          "foeStance": "anti-fortress"
         },
         {
           "t": 300,
-          "youHp": 276,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 19,
-          "foeArmy": 22,
-          "youPeons": 8,
+          "youArmy": 32,
+          "foeArmy": 16,
+          "youPeons": 7,
           "foePeons": 8,
           "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "assault"
+          "foeTowers": 3,
+          "foeTrebs": 2,
+          "foeRams": 0,
+          "foeLayer": "mid",
+          "foeStance": "anti-fortress"
         },
         {
           "t": 330,
-          "youHp": 276,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 12,
-          "foeArmy": 6,
-          "youPeons": 4,
+          "youArmy": 34,
+          "foeArmy": 9,
+          "youPeons": 7,
           "foePeons": 8,
           "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
+          "foeTowers": 3,
+          "foeTrebs": 1,
+          "foeRams": 0,
+          "foeLayer": "keep",
+          "foeStance": "anti-fortress"
         },
         {
           "t": 360,
-          "youHp": 276,
+          "youHp": 265,
           "foeHp": 280,
-          "youArmy": 20,
-          "foeArmy": 12,
-          "youPeons": 4,
+          "youArmy": 15,
+          "foeArmy": 2,
+          "youPeons": 7,
           "foePeons": 8,
           "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 390,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 21,
-          "foeArmy": 17,
-          "youPeons": 4,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 420,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 22,
-          "foeArmy": 21,
-          "youPeons": 4,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "assault"
-        },
-        {
-          "t": 450,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 22,
-          "foeArmy": 6,
-          "youPeons": 4,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
+          "foeTowers": 3,
           "foeTrebs": 0,
           "foeRams": 1,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 480,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 23,
-          "foeArmy": 10,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 510,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 25,
-          "foeArmy": 13,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 540,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 29,
-          "foeArmy": 17,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 570,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 31,
-          "foeArmy": 21,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "assault"
-        },
-        {
-          "t": 600,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 24,
-          "foeArmy": 7,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 1,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 630,
-          "youHp": 276,
-          "foeHp": 232,
-          "youArmy": 24,
-          "foeArmy": 0,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "anti-fortress"
         }
       ]
     },
     {
       "version": 1,
-      "id": "match-2026-11-21T04-44-36-271Z",
-      "playedAt": "2026-11-21T04:44:36.271Z",
+      "id": "match-2026-11-21T15-34-14-919Z",
+      "playedAt": "2026-11-21T15:34:14.919Z",
       "map": {
-        "name": "Frost Notch",
-        "seed": 1004839268,
-        "lanes": 3,
-        "keepLevel": 9,
-        "scoutSalt": 2
-      },
-      "aiStyle": "doctrine",
-      "doctrineTune": {
-        "attackAt": 20,
-        "trebGoal": 5,
-        "ramGoal": 2,
-        "spyGoal": 1,
-        "escortGap": 34,
-        "standoff": 175,
-        "padGuards": 0,
-        "barracksGoal": 1,
-        "ballistaGoal": 1,
-        "wardPct": 35,
-        "archerPct": 25,
-        "earlyScreen": 2,
-        "ecoFirst": 1,
-        "barricades": 1,
-        "churchGoal": 2
-      },
-      "outcome": {
-        "humanWon": false,
-        "durationSec": 204,
-        "endReason": "Defeat. Your keep has fallen.",
-        "waves": 4,
-        "humanKeepHp": -5,
-        "docKeepHp": 265,
-        "humanSlain": 39,
-        "humanGoldEarned": 2439
-      },
-      "humanBuildOrder": [
-        {
-          "t": 3,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 4,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 41,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 55,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 71,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 149,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 151,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 153,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 158,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 159,
-          "kind": "church",
-          "zone": "midEco"
-        }
-      ],
-      "humanTrained": {
-        "peon": 11,
-        "archer": 3,
-        "rammer": 2,
-        "ward": 2
-      },
-      "humanUpgrades": {
-        "towerDamage": 8,
-        "towerRate": 2,
-        "barracksDamage": 2,
-        "barracksRate": 0
-      },
-      "humanPeaks": {
-        "maxArmy": 6,
-        "maxPeons": 13,
-        "firstCrossSec": 102
-      },
-      "timeline": [
-        {
-          "t": 30,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 1,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "home"
-        },
-        {
-          "t": 60,
-          "youHp": 223,
-          "foeHp": 265,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 13,
-          "foePeons": 14,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "home"
-        },
-        {
-          "t": 90,
-          "youHp": 223,
-          "foeHp": 265,
-          "youArmy": 1,
-          "foeArmy": 3,
-          "youPeons": 13,
-          "foePeons": 14,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "home"
-        },
-        {
-          "t": 120,
-          "youHp": 223,
-          "foeHp": 265,
-          "youArmy": 2,
-          "foeArmy": 8,
-          "youPeons": 13,
-          "foePeons": 14,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "home"
-        },
-        {
-          "t": 150,
-          "youHp": 223,
-          "foeHp": 265,
-          "youArmy": 0,
-          "foeArmy": 10,
-          "youPeons": 13,
-          "foePeons": 14,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "home"
-        },
-        {
-          "t": 180,
-          "youHp": 223,
-          "foeHp": 265,
-          "youArmy": 2,
-          "foeArmy": 22,
-          "youPeons": 13,
-          "foePeons": 14,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "assault"
-        }
-      ]
-    },
-    {
-      "version": 1,
-      "id": "match-2026-11-21T04-18-52-059Z",
-      "playedAt": "2026-11-21T04:18:52.059Z",
-      "map": {
-        "name": "Cinder Wold",
-        "seed": 1566912099,
+        "name": "Silent Glade",
+        "seed": 2554847028,
         "lanes": 1,
-        "keepLevel": 4,
+        "keepLevel": 7,
         "scoutSalt": 0
       },
       "aiStyle": "doctrine",
       "doctrineTune": {
         "attackAt": 20,
-        "trebGoal": 5,
-        "ramGoal": 2,
-        "spyGoal": 1,
-        "escortGap": 34,
+        "trebGoal": 2,
+        "ramGoal": 6,
+        "spyGoal": 2,
+        "escortGap": 38,
         "standoff": 175,
         "padGuards": 0,
         "barracksGoal": 1,
@@ -1007,83 +1028,82 @@
         "earlyScreen": 2,
         "ecoFirst": 1,
         "barricades": 1,
-        "churchGoal": 2
+        "churchGoal": 2,
+        "midStageAt": 12,
+        "fortressPush": 28,
+        "retreatKeepHp": 0.45,
+        "greedDrop": 5,
+        "churchSaveAt": 220,
+        "siegeTrebCap": 3
       },
       "outcome": {
         "humanWon": false,
-        "durationSec": 430,
+        "durationSec": 248,
         "endReason": "Defeat. Your keep has fallen.",
-        "waves": 9,
-        "humanKeepHp": 0,
+        "waves": 6,
+        "humanKeepHp": -6,
         "docKeepHp": 280,
-        "humanSlain": 63,
-        "humanGoldEarned": 4339
+        "humanSlain": 20,
+        "humanGoldEarned": 2636
       },
       "humanBuildOrder": [
         {
-          "t": 18,
+          "t": 26,
           "kind": "house",
           "zone": "eco"
         },
         {
-          "t": 50,
+          "t": 62,
           "kind": "house",
           "zone": "eco"
         },
         {
-          "t": 69,
+          "t": 104,
           "kind": "ballista",
           "zone": "combat"
         },
         {
-          "t": 84,
+          "t": 108,
+          "kind": "ballista",
+          "zone": "combat"
+        },
+        {
+          "t": 114,
           "kind": "barracks",
           "zone": "combat"
         },
         {
-          "t": 202,
+          "t": 192,
           "kind": "house",
           "zone": "midEco"
         },
         {
-          "t": 210,
+          "t": 193,
           "kind": "church",
           "zone": "midEco"
         },
         {
-          "t": 312,
+          "t": 195,
           "kind": "house",
           "zone": "midEco"
-        },
-        {
-          "t": 313,
-          "kind": "church",
-          "zone": "midEco"
-        },
-        {
-          "t": 316,
-          "kind": "barracks",
-          "zone": "combat"
         }
       ],
       "humanTrained": {
-        "peon": 12,
-        "archer": 3,
-        "rammer": 5,
-        "ward": 13,
-        "runner": 4,
-        "trebuchet": 1
+        "peon": 6,
+        "archer": 2,
+        "rammer": 3,
+        "levy": 5
       },
       "humanUpgrades": {
-        "towerDamage": 3,
-        "towerRate": 1,
-        "barracksDamage": 4,
+        "towerDamage": 6,
+        "towerRate": 6,
+        "barracksDamage": 2,
         "barracksRate": 0
       },
       "humanPeaks": {
-        "maxArmy": 27,
+        "maxArmy": 12,
         "maxPeons": 8,
-        "firstCrossSec": 130
+        "firstCrossSec": 166
       },
       "timeline": [
         {
@@ -1098,7 +1118,8 @@
           "foeTowers": 1,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "standard"
         },
         {
           "t": 60,
@@ -1106,200 +1127,451 @@
           "foeHp": 280,
           "youArmy": 0,
           "foeArmy": 0,
-          "youPeons": 8,
+          "youPeons": 5,
           "foePeons": 5,
           "youTowers": 1,
           "foeTowers": 1,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "standard"
         },
         {
           "t": 90,
-          "youHp": 276,
+          "youHp": 269,
           "foeHp": 280,
           "youArmy": 0,
           "foeArmy": 0,
           "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 2,
+          "youTowers": 1,
           "foeTowers": 2,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "standard"
         },
         {
           "t": 120,
-          "youHp": 276,
+          "youHp": 269,
           "foeHp": 280,
-          "youArmy": 1,
+          "youArmy": 0,
           "foeArmy": 0,
           "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 2,
+          "youTowers": 3,
           "foeTowers": 2,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
+          "foeLayer": "keep",
+          "foeStance": "anti-ballista"
         },
         {
           "t": 150,
-          "youHp": 276,
+          "youHp": 269,
           "foeHp": 280,
           "youArmy": 1,
           "foeArmy": 3,
           "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 180,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 8,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 210,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 9,
-          "foeArmy": 12,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 240,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 15,
-          "foeArmy": 18,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 270,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 22,
-          "foeArmy": 25,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "assault"
-        },
-        {
-          "t": 300,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 10,
-          "foeArmy": 7,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 330,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 13,
-          "foeArmy": 12,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 360,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 21,
-          "foeArmy": 18,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 390,
-          "youHp": 276,
-          "foeHp": 280,
-          "youArmy": 15,
-          "foeArmy": 18,
-          "youPeons": 8,
-          "foePeons": 8,
-          "youTowers": 2,
+          "youTowers": 3,
           "foeTowers": 2,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "assault"
+          "foeLayer": "keep",
+          "foeStance": "anti-ballista"
         },
         {
-          "t": 420,
-          "youHp": 276,
+          "t": 180,
+          "youHp": 269,
           "foeHp": 280,
-          "youArmy": 7,
-          "foeArmy": 25,
-          "youPeons": 4,
+          "youArmy": 2,
+          "foeArmy": 6,
+          "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
+          "youTowers": 3,
+          "foeTowers": 3,
+          "foeTrebs": 0,
+          "foeRams": 0,
+          "foeLayer": "keep",
+          "foeStance": "anti-ballista"
+        },
+        {
+          "t": 210,
+          "youHp": 269,
+          "foeHp": 280,
+          "youArmy": 1,
+          "foeArmy": 15,
+          "youPeons": 8,
+          "foePeons": 8,
+          "youTowers": 3,
+          "foeTowers": 3,
           "foeTrebs": 0,
           "foeRams": 1,
-          "foeLayer": "assault"
+          "foeLayer": "mid",
+          "foeStance": "anti-ballista"
+        },
+        {
+          "t": 240,
+          "youHp": 269,
+          "foeHp": 280,
+          "youArmy": 12,
+          "foeArmy": 21,
+          "youPeons": 8,
+          "foePeons": 8,
+          "youTowers": 3,
+          "foeTowers": 3,
+          "foeTrebs": 0,
+          "foeRams": 1,
+          "foeLayer": "assault",
+          "foeStance": "anti-ballista"
         }
       ]
     },
     {
       "version": 1,
-      "id": "match-2026-11-21T04-05-28-896Z",
-      "playedAt": "2026-11-21T04:05:28.896Z",
+      "id": "match-2026-11-21T15-28-25-513Z",
+      "playedAt": "2026-11-21T15:28:25.513Z",
       "map": {
-        "name": "Dusk Saddle",
-        "seed": 368284308,
-        "lanes": 1,
-        "keepLevel": 31,
-        "scoutSalt": 24
+        "name": "Night Wold",
+        "seed": 1116801757,
+        "lanes": 2,
+        "keepLevel": 6,
+        "scoutSalt": 8
       },
       "aiStyle": "doctrine",
       "doctrineTune": {
-        "attackAt": 16,
-        "trebGoal": 5,
+        "attackAt": 20,
+        "trebGoal": 2,
         "ramGoal": 6,
+        "spyGoal": 1,
+        "escortGap": 30,
+        "standoff": 175,
+        "padGuards": 0,
+        "barracksGoal": 1,
+        "ballistaGoal": 1,
+        "wardPct": 45,
+        "archerPct": 25,
+        "earlyScreen": 2,
+        "ecoFirst": 1,
+        "barricades": 1,
+        "churchGoal": 2,
+        "midStageAt": 12,
+        "fortressPush": 28,
+        "retreatKeepHp": 0.45,
+        "greedDrop": 6,
+        "churchSaveAt": 320,
+        "siegeTrebCap": 3
+      },
+      "outcome": {
+        "humanWon": false,
+        "durationSec": 423,
+        "endReason": "Defeat. Your keep has fallen.",
+        "waves": 8,
+        "humanKeepHp": -1,
+        "docKeepHp": 280,
+        "humanSlain": 93,
+        "humanGoldEarned": 3976
+      },
+      "humanBuildOrder": [
+        {
+          "t": 2,
+          "kind": "house",
+          "zone": "eco"
+        },
+        {
+          "t": 36,
+          "kind": "house",
+          "zone": "eco"
+        },
+        {
+          "t": 51,
+          "kind": "house",
+          "zone": "eco"
+        },
+        {
+          "t": 99,
+          "kind": "barracks",
+          "zone": "combat"
+        },
+        {
+          "t": 111,
+          "kind": "house",
+          "zone": "midEco"
+        },
+        {
+          "t": 132,
+          "kind": "church",
+          "zone": "midEco"
+        },
+        {
+          "t": 216,
+          "kind": "house",
+          "zone": "midEco"
+        },
+        {
+          "t": 216,
+          "kind": "church",
+          "zone": "midEco"
+        },
+        {
+          "t": 267,
+          "kind": "ballista",
+          "zone": "combat"
+        },
+        {
+          "t": 274,
+          "kind": "ballista",
+          "zone": "combat"
+        }
+      ],
+      "humanTrained": {
+        "peon": 9,
+        "ward": 6,
+        "archer": 1,
+        "rammer": 4,
+        "trebuchet": 2
+      },
+      "humanUpgrades": {
+        "towerDamage": 4,
+        "towerRate": 2,
+        "barracksDamage": 2,
+        "barracksRate": 0
+      },
+      "humanPeaks": {
+        "maxArmy": 37,
+        "maxPeons": 11,
+        "firstCrossSec": 159
+      },
+      "timeline": [
+        {
+          "t": 30,
+          "youHp": 280,
+          "foeHp": 280,
+          "youArmy": 0,
+          "foeArmy": 0,
+          "youPeons": 5,
+          "foePeons": 8,
+          "youTowers": 1,
+          "foeTowers": 1,
+          "foeTrebs": 0,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "standard"
+        },
+        {
+          "t": 60,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 0,
+          "foeArmy": 0,
+          "youPeons": 11,
+          "foePeons": 11,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
+        },
+        {
+          "t": 90,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 0,
+          "foeArmy": 0,
+          "youPeons": 11,
+          "foePeons": 11,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 0,
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
+        },
+        {
+          "t": 120,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 1,
+          "foeArmy": 3,
+          "youPeons": 11,
+          "foePeons": 11,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 1,
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
+        },
+        {
+          "t": 150,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 3,
+          "foeArmy": 9,
+          "youPeons": 11,
+          "foePeons": 11,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 2,
+          "foeLayer": "home",
+          "foeStance": "punish-greed"
+        },
+        {
+          "t": 180,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 6,
+          "foeArmy": 13,
+          "youPeons": 11,
+          "foePeons": 11,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 2,
+          "foeLayer": "home",
+          "foeStance": "standard"
+        },
+        {
+          "t": 210,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 10,
+          "foeArmy": 16,
+          "youPeons": 11,
+          "foePeons": 11,
+          "youTowers": 1,
+          "foeTowers": 2,
+          "foeTrebs": 0,
+          "foeRams": 3,
+          "foeLayer": "home",
+          "foeStance": "standard"
+        },
+        {
+          "t": 240,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 21,
+          "foeArmy": 16,
+          "youPeons": 11,
+          "foePeons": 11,
+          "youTowers": 1,
+          "foeTowers": 4,
+          "foeTrebs": 0,
+          "foeRams": 3,
+          "foeLayer": "home",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 270,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 30,
+          "foeArmy": 21,
+          "youPeons": 11,
+          "foePeons": 11,
+          "youTowers": 2,
+          "foeTowers": 4,
+          "foeTrebs": 0,
+          "foeRams": 5,
+          "foeLayer": "assault",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 300,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 32,
+          "foeArmy": 21,
+          "youPeons": 5,
+          "foePeons": 11,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 0,
+          "foeRams": 3,
+          "foeLayer": "assault",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 330,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 15,
+          "foeArmy": 7,
+          "youPeons": 4,
+          "foePeons": 11,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 1,
+          "foeLayer": "home",
+          "foeStance": "anti-siege"
+        },
+        {
+          "t": 360,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 11,
+          "foeArmy": 14,
+          "youPeons": 4,
+          "foePeons": 11,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 0,
+          "foeRams": 1,
+          "foeLayer": "home",
+          "foeStance": "anti-ballista"
+        },
+        {
+          "t": 390,
+          "youHp": 262,
+          "foeHp": 280,
+          "youArmy": 11,
+          "foeArmy": 22,
+          "youPeons": 4,
+          "foePeons": 11,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 1,
+          "foeLayer": "assault",
+          "foeStance": "anti-ballista"
+        },
+        {
+          "t": 420,
+          "youHp": 133,
+          "foeHp": 280,
+          "youArmy": 6,
+          "foeArmy": 13,
+          "youPeons": 2,
+          "foePeons": 11,
+          "youTowers": 3,
+          "foeTowers": 4,
+          "foeTrebs": 1,
+          "foeRams": 0,
+          "foeLayer": "assault",
+          "foeStance": "anti-ballista"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "match-2026-11-21T14-39-33-173Z",
+      "playedAt": "2026-11-21T14:39:33.173Z",
+      "map": {
+        "name": "Obsidian Barrens",
+        "seed": 2717990949,
+        "lanes": 1,
+        "keepLevel": 9,
+        "scoutSalt": 3
+      },
+      "aiStyle": "doctrine",
+      "doctrineTune": {
+        "attackAt": 20,
+        "trebGoal": 5,
+        "ramGoal": 2,
         "spyGoal": 1,
         "escortGap": 34,
         "standoff": 175,
@@ -1318,57 +1590,51 @@
         "durationSec": 263,
         "endReason": "Defeat. Your keep has fallen.",
         "waves": 6,
-        "humanKeepHp": -38,
+        "humanKeepHp": -9,
         "docKeepHp": 280,
-        "humanSlain": 21,
-        "humanGoldEarned": 1652
+        "humanSlain": 22,
+        "humanGoldEarned": 2563
       },
       "humanBuildOrder": [
         {
-          "t": 15,
+          "t": 35,
           "kind": "house",
           "zone": "eco"
         },
         {
-          "t": 58,
+          "t": 76,
           "kind": "house",
           "zone": "eco"
         },
         {
-          "t": 81,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 117,
+          "t": 94,
           "kind": "ballista",
           "zone": "combat"
         },
         {
-          "t": 122,
-          "kind": "ballista",
-          "zone": "combat"
+          "t": 146,
+          "kind": "house",
+          "zone": "midEco"
         },
         {
-          "t": 127,
-          "kind": "ballista",
-          "zone": "combat"
+          "t": 147,
+          "kind": "church",
+          "zone": "midEco"
         }
       ],
       "humanTrained": {
-        "peon": 5,
-        "rammer": 7
+        "peon": 6
       },
       "humanUpgrades": {
-        "towerDamage": 6,
-        "towerRate": 1,
-        "barracksDamage": 2,
+        "towerDamage": 4,
+        "towerRate": 2,
+        "barracksDamage": 0,
         "barracksRate": 0
       },
       "humanPeaks": {
-        "maxArmy": 7,
-        "maxPeons": 7,
-        "firstCrossSec": null
+        "maxArmy": 5,
+        "maxPeons": 8,
+        "firstCrossSec": 180
       },
       "timeline": [
         {
@@ -1378,7 +1644,7 @@
           "youArmy": 0,
           "foeArmy": 0,
           "youPeons": 2,
-          "foePeons": 5,
+          "foePeons": 2,
           "youTowers": 1,
           "foeTowers": 1,
           "foeTrebs": 0,
@@ -1388,199 +1654,6 @@
         {
           "t": 60,
           "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 90,
-          "youHp": 275,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 7,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 120,
-          "youHp": 275,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 1,
-          "youPeons": 7,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 150,
-          "youHp": 275,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 4,
-          "youPeons": 7,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 3,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 180,
-          "youHp": 275,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 9,
-          "youPeons": 7,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 210,
-          "youHp": 275,
-          "foeHp": 280,
-          "youArmy": 2,
-          "foeArmy": 14,
-          "youPeons": 7,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 240,
-          "youHp": 275,
-          "foeHp": 280,
-          "youArmy": 5,
-          "foeArmy": 20,
-          "youPeons": 7,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "assault"
-        }
-      ]
-    },
-    {
-      "version": 1,
-      "id": "match-2026-11-21T04-00-10-259Z",
-      "playedAt": "2026-11-21T04:00:10.259Z",
-      "map": {
-        "name": "Dusk Saddle",
-        "seed": 368284308,
-        "lanes": 1,
-        "keepLevel": 31,
-        "scoutSalt": 24
-      },
-      "aiStyle": "doctrine",
-      "doctrineTune": {
-        "attackAt": 16,
-        "trebGoal": 5,
-        "ramGoal": 6,
-        "spyGoal": 1,
-        "escortGap": 34,
-        "standoff": 175,
-        "padGuards": 0,
-        "barracksGoal": 1,
-        "ballistaGoal": 1,
-        "wardPct": 35,
-        "archerPct": 25,
-        "earlyScreen": 2,
-        "ecoFirst": 1,
-        "barricades": 1,
-        "churchGoal": 2
-      },
-      "outcome": {
-        "humanWon": false,
-        "durationSec": 258,
-        "endReason": "Defeat. Your keep has fallen.",
-        "waves": 6,
-        "humanKeepHp": -23,
-        "docKeepHp": 280,
-        "humanSlain": 27,
-        "humanGoldEarned": 1810
-      },
-      "humanBuildOrder": [
-        {
-          "t": 15,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 48,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 57,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 178,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 179,
-          "kind": "church",
-          "zone": "midEco"
-        },
-        {
-          "t": 184,
-          "kind": "catapult",
-          "zone": "combat"
-        },
-        {
-          "t": 188,
-          "kind": "ballista",
-          "zone": "combat"
-        }
-      ],
-      "humanTrained": {
-        "peon": 4,
-        "archer": 6,
-        "rammer": 3
-      },
-      "humanUpgrades": {
-        "towerDamage": 1,
-        "towerRate": 0,
-        "barracksDamage": 2,
-        "barracksRate": 0
-      },
-      "humanPeaks": {
-        "maxArmy": 14,
-        "maxPeons": 6,
-        "firstCrossSec": 106
-      },
-      "timeline": [
-        {
-          "t": 30,
-          "youHp": 280,
           "foeHp": 280,
           "youArmy": 0,
           "foeArmy": 0,
@@ -1593,26 +1666,12 @@
           "foeLayer": "keep"
         },
         {
-          "t": 60,
-          "youHp": 280,
+          "t": 90,
+          "youHp": 273,
           "foeHp": 280,
           "youArmy": 0,
           "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 90,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 2,
-          "foeArmy": 0,
-          "youPeons": 6,
+          "youPeons": 8,
           "foePeons": 8,
           "youTowers": 1,
           "foeTowers": 2,
@@ -1622,786 +1681,7 @@
         },
         {
           "t": 120,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 2,
-          "foeArmy": 1,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 150,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 4,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 4,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 180,
-          "youHp": 260,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 9,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 210,
-          "youHp": 260,
-          "foeHp": 280,
-          "youArmy": 4,
-          "foeArmy": 15,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 240,
-          "youHp": 260,
-          "foeHp": 280,
-          "youArmy": 14,
-          "foeArmy": 21,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "assault"
-        }
-      ]
-    },
-    {
-      "version": 1,
-      "id": "match-2026-11-21T03-55-13-924Z",
-      "playedAt": "2026-11-21T03:55:13.924Z",
-      "map": {
-        "name": "Dusk Saddle",
-        "seed": 368284308,
-        "lanes": 1,
-        "keepLevel": 31,
-        "scoutSalt": 24
-      },
-      "aiStyle": "doctrine",
-      "doctrineTune": {
-        "attackAt": 16,
-        "trebGoal": 5,
-        "ramGoal": 6,
-        "spyGoal": 1,
-        "escortGap": 34,
-        "standoff": 175,
-        "padGuards": 0,
-        "barracksGoal": 1,
-        "ballistaGoal": 1,
-        "wardPct": 35,
-        "archerPct": 25,
-        "earlyScreen": 2,
-        "ecoFirst": 1,
-        "barricades": 1,
-        "churchGoal": 2
-      },
-      "outcome": {
-        "humanWon": false,
-        "durationSec": 267,
-        "endReason": "Defeat. Your keep has fallen.",
-        "waves": 6,
-        "humanKeepHp": -123,
-        "docKeepHp": 280,
-        "humanSlain": 19,
-        "humanGoldEarned": 1703
-      },
-      "humanBuildOrder": [
-        {
-          "t": 16,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 39,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 55,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 66,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 147,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 149,
-          "kind": "church",
-          "zone": "midEco"
-        },
-        {
-          "t": 191,
-          "kind": "ballista",
-          "zone": "combat"
-        }
-      ],
-      "humanTrained": {
-        "peon": 4,
-        "archer": 8,
-        "levy": 1,
-        "runner": 2
-      },
-      "humanUpgrades": {
-        "towerDamage": 3,
-        "towerRate": 1,
-        "barracksDamage": 2,
-        "barracksRate": 0
-      },
-      "humanPeaks": {
-        "maxArmy": 16,
-        "maxPeons": 6,
-        "firstCrossSec": 94
-      },
-      "timeline": [
-        {
-          "t": 30,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 4,
-          "foePeons": 5,
-          "youTowers": 1,
-          "foeTowers": 1,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 60,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 90,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 120,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 150,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 2,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 180,
-          "youHp": 267,
-          "foeHp": 280,
-          "youArmy": 2,
-          "foeArmy": 6,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 5,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 210,
-          "youHp": 267,
-          "foeHp": 280,
-          "youArmy": 6,
-          "foeArmy": 12,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 240,
-          "youHp": 267,
-          "foeHp": 280,
-          "youArmy": 13,
-          "foeArmy": 19,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "assault"
-        }
-      ]
-    },
-    {
-      "version": 1,
-      "id": "match-2026-11-21T03-50-16-664Z",
-      "playedAt": "2026-11-21T03:50:16.664Z",
-      "map": {
-        "name": "Dusk Saddle",
-        "seed": 368284308,
-        "lanes": 1,
-        "keepLevel": 31,
-        "scoutSalt": 24
-      },
-      "aiStyle": "doctrine",
-      "doctrineTune": {
-        "attackAt": 16,
-        "trebGoal": 5,
-        "ramGoal": 6,
-        "spyGoal": 1,
-        "escortGap": 34,
-        "standoff": 175,
-        "padGuards": 0,
-        "barracksGoal": 1,
-        "ballistaGoal": 1,
-        "wardPct": 35,
-        "archerPct": 25,
-        "earlyScreen": 2,
-        "ecoFirst": 1,
-        "barricades": 1,
-        "churchGoal": 2
-      },
-      "outcome": {
-        "humanWon": false,
-        "durationSec": 239,
-        "endReason": "Defeat. Your keep has fallen.",
-        "waves": 5,
-        "humanKeepHp": -37,
-        "docKeepHp": 280,
-        "humanSlain": 15,
-        "humanGoldEarned": 1459
-      },
-      "humanBuildOrder": [
-        {
-          "t": 15,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 38,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 68,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 187,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 188,
-          "kind": "church",
-          "zone": "midEco"
-        }
-      ],
-      "humanTrained": {
-        "peon": 5,
-        "runner": 4,
-        "archer": 1,
-        "trebuchet": 1,
-        "ward": 1,
-        "rammer": 1
-      },
-      "humanUpgrades": {
-        "towerDamage": 0,
-        "towerRate": 0,
-        "barracksDamage": 2,
-        "barracksRate": 1
-      },
-      "humanPeaks": {
-        "maxArmy": 5,
-        "maxPeons": 6,
-        "firstCrossSec": 88
-      },
-      "timeline": [
-        {
-          "t": 30,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 4,
-          "foePeons": 5,
-          "youTowers": 1,
-          "foeTowers": 1,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 60,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 90,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 2,
-          "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 120,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 3,
-          "foeArmy": 1,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 150,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 2,
-          "foeArmy": 5,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 4,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 180,
-          "youHp": 252,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 11,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 210,
-          "youHp": 252,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 18,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "assault"
-        }
-      ]
-    },
-    {
-      "version": 1,
-      "id": "match-2026-11-21T03-45-27-091Z",
-      "playedAt": "2026-11-21T03:45:27.091Z",
-      "map": {
-        "name": "Dusk Saddle",
-        "seed": 368284308,
-        "lanes": 1,
-        "keepLevel": 31,
-        "scoutSalt": 24
-      },
-      "aiStyle": "doctrine",
-      "doctrineTune": {
-        "attackAt": 16,
-        "trebGoal": 5,
-        "ramGoal": 6,
-        "spyGoal": 1,
-        "escortGap": 34,
-        "standoff": 175,
-        "padGuards": 0,
-        "barracksGoal": 1,
-        "ballistaGoal": 1,
-        "wardPct": 35,
-        "archerPct": 25,
-        "earlyScreen": 2,
-        "ecoFirst": 1,
-        "barricades": 1,
-        "churchGoal": 2
-      },
-      "outcome": {
-        "humanWon": false,
-        "durationSec": 244,
-        "endReason": "Defeat. Your keep has fallen.",
-        "waves": 6,
-        "humanKeepHp": -175,
-        "docKeepHp": 280,
-        "humanSlain": 19,
-        "humanGoldEarned": 1625
-      },
-      "humanBuildOrder": [
-        {
-          "t": 16,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 40,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 69,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 81,
-          "kind": "catapult",
-          "zone": "combat"
-        },
-        {
-          "t": 111,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 118,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 214,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 216,
-          "kind": "church",
-          "zone": "midEco"
-        }
-      ],
-      "humanTrained": {
-        "peon": 4,
-        "trebuchet": 1
-      },
-      "humanUpgrades": {
-        "towerDamage": 5,
-        "towerRate": 1,
-        "barracksDamage": 0,
-        "barracksRate": 0
-      },
-      "humanPeaks": {
-        "maxArmy": 1,
-        "maxPeons": 6,
-        "firstCrossSec": null
-      },
-      "timeline": [
-        {
-          "t": 30,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 5,
-          "foePeons": 5,
-          "youTowers": 1,
-          "foeTowers": 1,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 60,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 90,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 120,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 2,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 1,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 150,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 4,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 4,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 180,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 10,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 210,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 17,
-          "youPeons": 6,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "assault"
-        },
-        {
-          "t": 240,
-          "youHp": 265,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 20,
-          "youPeons": 1,
-          "foePeons": 8,
-          "youTowers": 4,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 5,
-          "foeLayer": "assault"
-        }
-      ]
-    },
-    {
-      "version": 1,
-      "id": "match-2026-11-21T03-40-22-635Z",
-      "playedAt": "2026-11-21T03:40:22.635Z",
-      "map": {
-        "name": "Thorn Bend",
-        "seed": 3054448038,
-        "lanes": 1,
-        "keepLevel": 31,
-        "scoutSalt": 10
-      },
-      "aiStyle": "doctrine",
-      "doctrineTune": {
-        "attackAt": 16,
-        "trebGoal": 5,
-        "ramGoal": 6,
-        "spyGoal": 1,
-        "escortGap": 34,
-        "standoff": 175,
-        "padGuards": 0,
-        "barracksGoal": 1,
-        "ballistaGoal": 1,
-        "wardPct": 35,
-        "archerPct": 25,
-        "earlyScreen": 2,
-        "ecoFirst": 1,
-        "barricades": 1,
-        "churchGoal": 2
-      },
-      "outcome": {
-        "humanWon": false,
-        "durationSec": 246,
-        "endReason": "Defeat. Your keep has fallen.",
-        "waves": 6,
-        "humanKeepHp": -23,
-        "docKeepHp": 280,
-        "humanSlain": 17,
-        "humanGoldEarned": 1707
-      },
-      "humanBuildOrder": [
-        {
-          "t": 17,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 40,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 56,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 92,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 97,
-          "kind": "barracks",
-          "zone": "combat"
-        },
-        {
-          "t": 106,
-          "kind": "house",
-          "zone": "midEco"
-        }
-      ],
-      "humanTrained": {
-        "peon": 6,
-        "ward": 2,
-        "levy": 1
-      },
-      "humanUpgrades": {
-        "towerDamage": 4,
-        "towerRate": 0,
-        "barracksDamage": 0,
-        "barracksRate": 0
-      },
-      "humanPeaks": {
-        "maxArmy": 2,
-        "maxPeons": 8,
-        "firstCrossSec": 181
-      },
-      "timeline": [
-        {
-          "t": 30,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 5,
-          "foePeons": 8,
-          "youTowers": 1,
-          "foeTowers": 1,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 60,
-          "youHp": 278,
+          "youHp": 273,
           "foeHp": 280,
           "youArmy": 0,
           "foeArmy": 0,
@@ -2414,260 +1694,59 @@
           "foeLayer": "keep"
         },
         {
-          "t": 90,
-          "youHp": 278,
+          "t": 150,
+          "youHp": 273,
           "foeHp": 280,
           "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 7,
+          "foeArmy": 4,
+          "youPeons": 8,
           "foePeons": 8,
           "youTowers": 2,
           "foeTowers": 2,
           "foeTrebs": 0,
           "foeRams": 0,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 120,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 2,
-          "youPeons": 7,
-          "foePeons": 8,
-          "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "keep"
-        },
-        {
-          "t": 150,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 6,
-          "youPeons": 7,
-          "foePeons": 8,
-          "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 5,
           "foeLayer": "keep"
         },
         {
           "t": 180,
-          "youHp": 278,
+          "youHp": 273,
           "foeHp": 280,
-          "youArmy": 2,
-          "foeArmy": 11,
-          "youPeons": 7,
+          "youArmy": 3,
+          "foeArmy": 9,
+          "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 3,
+          "youTowers": 2,
           "foeTowers": 2,
           "foeTrebs": 0,
-          "foeRams": 6,
+          "foeRams": 1,
           "foeLayer": "keep"
         },
         {
           "t": 210,
-          "youHp": 278,
+          "youHp": 273,
           "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 17,
-          "youPeons": 7,
+          "youArmy": 5,
+          "foeArmy": 16,
+          "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 3,
+          "youTowers": 2,
           "foeTowers": 2,
           "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "assault"
+          "foeRams": 1,
+          "foeLayer": "keep"
         },
         {
           "t": 240,
-          "youHp": 278,
+          "youHp": 273,
           "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 15,
-          "youPeons": 7,
+          "youArmy": 3,
+          "foeArmy": 25,
+          "youPeons": 8,
           "foePeons": 8,
-          "youTowers": 3,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 6,
-          "foeLayer": "assault"
-        }
-      ]
-    },
-    {
-      "version": 1,
-      "id": "match-2026-11-21T03-34-01-628Z",
-      "playedAt": "2026-11-21T03:34:01.628Z",
-      "map": {
-        "name": "Thorn Fen",
-        "seed": 3123624949,
-        "lanes": 2,
-        "keepLevel": 31,
-        "scoutSalt": 9
-      },
-      "aiStyle": "doctrine",
-      "doctrineTune": {
-        "attackAt": 16,
-        "trebGoal": 5,
-        "ramGoal": 6,
-        "spyGoal": 1,
-        "escortGap": 34,
-        "standoff": 175,
-        "padGuards": 0,
-        "barracksGoal": 1,
-        "ballistaGoal": 1,
-        "wardPct": 35,
-        "archerPct": 25,
-        "earlyScreen": 2,
-        "ecoFirst": 1,
-        "barricades": 1,
-        "churchGoal": 2
-      },
-      "outcome": {
-        "humanWon": false,
-        "durationSec": 170,
-        "endReason": "Defeat. Your keep has fallen.",
-        "waves": 4,
-        "humanKeepHp": -4,
-        "docKeepHp": 280,
-        "humanSlain": 19,
-        "humanGoldEarned": 1797
-      },
-      "humanBuildOrder": [
-        {
-          "t": 2,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 28,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 39,
-          "kind": "house",
-          "zone": "eco"
-        },
-        {
-          "t": 64,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 85,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 123,
-          "kind": "house",
-          "zone": "midEco"
-        },
-        {
-          "t": 139,
-          "kind": "church",
-          "zone": "midEco"
-        },
-        {
-          "t": 167,
-          "kind": "ballista",
-          "zone": "combat"
-        },
-        {
-          "t": 169,
-          "kind": "catapult",
-          "zone": "combat"
-        }
-      ],
-      "humanTrained": {
-        "peon": 9
-      },
-      "humanUpgrades": {
-        "towerDamage": 4,
-        "towerRate": 4,
-        "barracksDamage": 0,
-        "barracksRate": 0
-      },
-      "humanPeaks": {
-        "maxArmy": 1,
-        "maxPeons": 11,
-        "firstCrossSec": null
-      },
-      "timeline": [
-        {
-          "t": 30,
-          "youHp": 280,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 5,
-          "foePeons": 10,
-          "youTowers": 1,
-          "foeTowers": 1,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "home"
-        },
-        {
-          "t": 60,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 0,
-          "youPeons": 11,
-          "foePeons": 11,
-          "youTowers": 1,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 0,
-          "foeLayer": "home"
-        },
-        {
-          "t": 90,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 7,
-          "youPeons": 11,
-          "foePeons": 11,
           "youTowers": 2,
           "foeTowers": 2,
           "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "home"
-        },
-        {
-          "t": 120,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 0,
-          "foeArmy": 10,
-          "youPeons": 11,
-          "foePeons": 11,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 2,
-          "foeLayer": "home"
-        },
-        {
-          "t": 150,
-          "youHp": 278,
-          "foeHp": 280,
-          "youArmy": 1,
-          "foeArmy": 20,
-          "youPeons": 11,
-          "foePeons": 11,
-          "youTowers": 2,
-          "foeTowers": 2,
-          "foeTrebs": 0,
-          "foeRams": 5,
+          "foeRams": 1,
           "foeLayer": "assault"
         }
       ]

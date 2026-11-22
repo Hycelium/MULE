@@ -50,6 +50,7 @@ export interface AdaptivePlan {
   stance: AdaptiveStance;
   wantBallistas: number;
   wantCatapults: number;
+  wantBarracks: number;
   wantTrebs: number;
   wantRams: number;
   wantSpies: number;
@@ -149,6 +150,7 @@ export function adaptDoctrinePlan(
     gold: number;
     wood: number;
     ecoFull: boolean;
+    ecoPads?: number;
     hasForwardHouse: boolean;
     churches: number;
     ballistas: number;
@@ -187,6 +189,10 @@ export function adaptDoctrinePlan(
   const lateDefense = own.ecoFull && (own.churches >= 1 || own.time >= 200 || intel.totalArmy >= 10);
   let wantBallistas = lateDefense ? Math.max(tune.ballistaGoal, 2) : tune.ballistaGoal;
   let wantCatapults = lateDefense ? 1 : 0;
+  const wantBarracks =
+    own.ecoFull && (intel.totalArmy >= 16 || intel.barracks >= 2 || intel.churches >= 2 || own.time >= 210)
+      ? Math.max(tune.barracksGoal, 2)
+      : tune.barracksGoal;
 
   const profileFortressHint = Boolean(hasProfile && profile && profile.fortressRate >= 0.65 && own.time >= 130);
   const fortified =
@@ -225,7 +231,7 @@ export function adaptDoctrinePlan(
   if (intel.trebs >= 1 || intel.rams >= 3) {
     stance = "anti-siege";
     if (intel.trebs >= 1) {
-      wantSpies = own.ecoFull ? Math.max(wantSpies, Math.min(3, intel.trebs + 1)) : wantSpies;
+      wantSpies = own.ecoFull ? Math.max(wantSpies, Math.min(4, intel.trebs + 1)) : wantSpies;
       // Fast runners (54 spd, 1.55x melee vs trebs) rush enemy trebs down.
       runnerPct = 25;
       archerPct = Math.min(archerPct, 10); // Archers deal only 0.28x to trebs.
@@ -260,17 +266,19 @@ export function adaptDoctrinePlan(
   if (intel.wards >= 4 && intel.wards >= intel.levies) {
     if (stance === "standard") stance = "anti-ward";
     archerPct = 0; // Archers only deal 0.40x to Wards; Levies deal 1.25x bonus vs Wards.
-    wardPct = Math.min(wardPct, 20);
+    // If the enemy backs their Ward wall with a big Archer volley, keep enough Wards + Catapult to soak arrows!
+    wardPct = intel.archers >= 6 ? Math.max(wardPct, 35) : Math.min(wardPct, 20);
     wantBallistas = Math.max(wantBallistas, 2);
+    if (intel.archers >= 6) wantCatapults = Math.max(wantCatapults, 1);
     upgradePref = "damage";
   } else if (intel.archers >= 5) {
     if (stance === "standard") stance = "anti-swarm";
     wardPct = Math.max(wardPct, 45);
     archerPct = Math.min(archerPct, 15);
-    wantCatapults = Math.max(wantCatapults, 1);
+    wantCatapults = Math.max(wantCatapults, intel.archers >= 10 || intel.totalArmy >= 22 ? 2 : 1);
   } else if (intel.levies + intel.runners >= 8) {
     if (stance === "standard") stance = "anti-swarm";
-    wantCatapults = Math.max(wantCatapults, 1);
+    wantCatapults = Math.max(wantCatapults, intel.totalArmy >= 22 ? 2 : 1);
     if (intel.runners >= 4) {
       wantBallistas = Math.max(wantBallistas, 2);
       upgradePref = "rate";
@@ -278,16 +286,30 @@ export function adaptDoctrinePlan(
     archerPct = Math.max(archerPct, 30);
   }
 
-  // 5. Punish greedy low-defense openings (enemy booms houses/churches with <= 1 tower).
-  const greedyEnemy =
+  // 5. Punish greedy low-defense openings (enemy booms houses/churches with no Ballistas/Catapults).
+  const nakedChurchGreed =
+    (own.ecoPads ?? 3) >= 3 &&
     own.ecoFull &&
-    own.time < 220 &&
-    intel.defenseTowers <= 1 &&
-    intel.totalArmy <= 4 &&
-    (intel.houses >= 3 || intel.churches >= 1);
+    own.time < 195 &&
+    intel.ballistas === 0 &&
+    intel.catapults === 0 &&
+    intel.churches >= 1 &&
+    intel.totalArmy <= 12;
+  const greedyEnemy =
+    nakedChurchGreed ||
+    (own.ecoFull &&
+      own.time < 220 &&
+      intel.defenseTowers <= 1 &&
+      intel.totalArmy <= 4 &&
+      (intel.houses >= 3 || intel.churches >= 1));
   if (greedyEnemy && stance === "standard") {
     stance = "punish-greed";
     runnerPct = Math.max(runnerPct, 20);
+  }
+  if (nakedChurchGreed) {
+    // Pure RTS punish: vs 0-tower early Church greed, don't sink gold into extra towers — pump units & raze the Church!
+    wantBallistas = Math.min(wantBallistas, 1);
+    wantCatapults = 0;
   }
 
   // 6. Timber banking & push threshold discipline.
@@ -299,13 +321,18 @@ export function adaptDoctrinePlan(
 
   let pushFloor = tune.attackAt;
   let requireTrebs = 0;
-  if (greedyEnemy) {
+  if (nakedChurchGreed) {
+    pushFloor = Math.max(8, Math.min(10, intel.totalArmy + 3));
+  } else if (greedyEnemy) {
     pushFloor = Math.max(12, tune.attackAt - tune.greedDrop);
-  } else if (intel.defenseTowers >= 3 && own.churches >= 1) {
-    pushFloor = Math.min(own.armyCap - 3, Math.max(tune.attackAt, tune.fortressPush));
-    requireTrebs = 2;
-  } else if (intel.totalArmy >= 22 && own.churches >= 1) {
-    pushFloor = Math.min(own.armyCap - 3, Math.max(tune.attackAt, Math.min(32, intel.totalArmy)));
+  } else if (intel.defenseTowers >= 3) {
+    pushFloor = Math.min(own.armyCap - 2, Math.max(tune.attackAt, tune.fortressPush));
+    requireTrebs = own.ecoFull ? 2 : 0;
+  }
+  if (!greedyEnemy && intel.totalArmy >= 16) {
+    // Never trickle small squads into a larger visible enemy army — match their mass first.
+    const parityTarget = Math.min(34, Math.ceil(intel.totalArmy * 0.85));
+    pushFloor = Math.min(own.armyCap - 2, Math.max(pushFloor, parityTarget));
   }
 
   // 7. Goal-based economy reservation + worker resource steering (#4).
@@ -314,21 +341,35 @@ export function adaptDoctrinePlan(
   let reserveWood = 0;
   let resourceBias: ResourceBias = "balanced";
 
+  const church1MinArmy = (own.ecoPads ?? 3) <= 2 ? 9 : 6;
+  const matchEnemyChurch =
+    intel.churches > own.churches &&
+    own.armyUsed >= 8 &&
+    own.ballistas + own.catapults >= 2 &&
+    !(fortified && own.trebs < 2 && own.churches >= 1);
   if (needGuardDogs && own.needsGuardDogUpgrade) {
     ecoGoal = "guard-dogs";
     reserveGold = UPGRADE_COST[0];
     resourceBias = own.gold < reserveGold ? "gold" : "balanced";
   } else if (
+    !nakedChurchGreed &&
     own.ecoFull &&
     own.hasForwardHouse &&
     own.churches < tune.churchGoal &&
     !emergencyDefend &&
-    intel.approachingHome < 5 &&
-    own.armyUsed >= 12 &&
-    own.gold >= tune.churchSaveAt &&
-    !(bankForTreb && own.trebs === 0)
+    intel.approachingHome < 4 &&
+    (matchEnemyChurch ||
+      (own.churches === 0 &&
+        own.armyUsed >= church1MinArmy &&
+        own.armyUsed + 5 >= intel.totalArmy) ||
+      (own.churches >= 1 &&
+        own.armyUsed >= 16 &&
+        own.armyUsed >= intel.totalArmy &&
+        !(fortified && own.trebs < 2) &&
+        own.gold >= tune.churchSaveAt))
   ) {
-    // Pause trickle spending so we sprint to 500g and consecrate a Church cleanly.
+    // Church #1: rush cleanly right after home eco + initial screen (or match enemy Church!)
+    // Church #2: consecrate only when army matches/leads the enemy and siege isn't urgent.
     ecoGoal = "church";
     reserveGold = CHURCH_UPGRADE_GOLD;
     resourceBias = "gold";
@@ -363,7 +404,7 @@ export function adaptDoctrinePlan(
       : intel.defenseTowers < 2 || own.trebs >= 1 || own.rams >= 1;
   const cappedOut = own.armyUsed >= Math.max(tune.attackAt, own.armyCap - 2);
 
-  // Detect stalled fortress push: we went in with siege, all siege got sniped, enemy keep is still healthy.
+  // Detect stalled push: siege got sniped OR our assault force got badly outnumbered while keep is healthy.
   const siegeWipedMidPush =
     alreadyPushing &&
     mem.wasAssaulting &&
@@ -375,7 +416,14 @@ export function adaptDoctrinePlan(
     own.armyUsed >= 7 &&
     !cappedOut;
 
-  if (siegeWipedMidPush) {
+  const outnumberedMidPush =
+    alreadyPushing &&
+    intel.totalArmy >= 18 &&
+    own.armyUsed < Math.floor(intel.totalArmy * 0.5) &&
+    own.enemyKeepHpRatio > tune.retreatKeepHp &&
+    !cappedOut;
+
+  if (siegeWipedMidPush || outnumberedMidPush) {
     mem.retreatUntil = own.time + 18;
     mem.wasAssaulting = false;
     mem.hadSiegeOnPush = false;
@@ -386,9 +434,18 @@ export function adaptDoctrinePlan(
     stance = "regroup";
   }
 
+  // Army parity discipline: avoid suicide-charging a smaller army into a much larger enemy ball.
+  const severelyOutnumbered =
+    intel.totalArmy >= 16 &&
+    own.armyUsed < Math.floor(intel.totalArmy * 0.72) &&
+    own.enemyKeepHpRatio > 0.35;
+  const defendUnderTowers =
+    severelyOutnumbered && (intel.approachingHome >= 5 || !cappedOut);
+
   const attackReady =
     !keepThreatened &&
     !regrouping &&
+    !defendUnderTowers &&
     (cappedOut ||
       (alreadyPushing && own.armyUsed >= Math.max(6, Math.floor(pushFloor / 2.2))) ||
       (own.armyUsed >= pushFloor && hasSiege));
@@ -408,6 +465,8 @@ export function adaptDoctrinePlan(
     // Hold midfield/bridges once eco is rolling & we have a real staging force; otherwise defend Home.
     const canHoldMid =
       !keepThreatened &&
+      !defendUnderTowers &&
+      !regrouping &&
       own.ecoFull &&
       own.armyUsed >= tune.midStageAt &&
       intel.approachingHome < 6;
@@ -427,6 +486,7 @@ export function adaptDoctrinePlan(
     stance,
     wantBallistas,
     wantCatapults,
+    wantBarracks,
     wantTrebs,
     wantRams,
     wantSpies,
